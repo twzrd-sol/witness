@@ -6,6 +6,7 @@ import { privateKeyToAccount } from "viem/accounts";
 import { wrapFetchWithPayment } from "@x402/fetch";
 import { createApp, witnessAccepts } from "./server.js";
 import { makeRetrieve } from "./retrieve.js";
+import { openapiDoc } from "./openapi.js";
 
 const METHOD_DOC = JSON.stringify({
   url: "https://outbid.sh/top",
@@ -84,6 +85,7 @@ export function createHostApp(env = process.env, { readerFetch } = {}) {
   const base = env.PUBLIC_BASE_URL || "https://witness.outbid.sh";
   const paywall = { evmAddress: env.EVM_ADDRESS, svmAddress: env.SVM_ADDRESS };
   const app = createApp({ paywall, facilitatorUrl: env.FACILITATOR_URL, observationsDir: env.OBSERVATIONS_DIR || "data", retrieve: makeRetrieve({ fetch: readerFetch, ...readerPayment(env, readerFetch) }) });
+  app.get("/openapi.json", (_q, res) => res.json(openapiDoc(env)));
   const text = (res, body, type = "text/plain") => res.type(type).send(body);
   app.get("/robots.txt", (_q, res) => text(res, ROBOTS));
   app.get("/llms.txt", (_q, res) => text(res, LLMS, "text/markdown"));
