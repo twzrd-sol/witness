@@ -40,8 +40,9 @@ test("scrape 422 does not call browse", async () => {
 test("POST /quote SSRF does not retrieve", async () => {
   let n = 0;
   const app = createApp({ retrieve: async () => (n++, { text: FIXTURE }) });
-  await new Promise((r) => app.listen(0, "127.0.0.1", r));
-  const res = await fetch(`http://127.0.0.1:${app.address().port}/quote`, {
+  const server = app.listen(0, "127.0.0.1");
+  await new Promise((r) => server.once("listening", r));
+  const res = await fetch(`http://127.0.0.1:${server.address().port}/quote`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ url: "http://127.0.0.1/", extract: EXTRACT }),
@@ -49,5 +50,5 @@ test("POST /quote SSRF does not retrieve", async () => {
   assert.equal(res.status, 422);
   assert.equal((await res.json()).reason, "https_only");
   assert.equal(n, 0);
-  await new Promise((r) => app.close(r));
+  await new Promise((r) => server.close(r));
 });
