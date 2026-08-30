@@ -2,8 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert";
 import { createHostApp } from "../src/listen.js";
 
-async function withServer(env, fn) {
-  const server = createHostApp(env).listen(0, "127.0.0.1");
+async function withServer(env, fn, opts = {}) {
+  const server = createHostApp(env, opts).listen(0, "127.0.0.1");
   await new Promise((r) => server.once("listening", r));
   try { return await fn(`http://127.0.0.1:${server.address().port}`); }
   finally { await new Promise((r) => server.close(r)); }
@@ -35,16 +35,18 @@ test("discovery GETs: robots, llms, skill, well-knowns (200, no pay)", async () 
   });
 });
 
-test("x402 descriptor is empty without payTo env; quote 503s unwired; witness 402s inline", async () => {
+test("x402 descriptor empty without payTo env; quote 200 + unpaid witness 402 via mocked reader", async () => {
+  const readerFetch = async () => ({ ok: true, status: 200, text: async () => "a: ok" });
   await withServer({}, async (base) => {
     const x402 = await (await fetch(`${base}/.well-known/x402`)).json();
     assert.deepEqual(x402.accepts, [], "no payTo env -> no accepts");
 
-    const quote = await fetch(`${base}/quote`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ url: "https://example.com", extract: { a: "string" } }) });
-    assert.equal(quote.status, 503);
-    assert.equal((await quote.json()).reason, "retrieve_not_wired");
+    const body = JSON.stringify({ url: "https://example.com/top", extract: { a: "string" } });
+    const quote = await fetch(`${base}/quote`, { method: "POST", headers: { "content-type": "application/json" }, body });
+    assert.equal(quote.status, 200);
+    assert.equal((await quote.json()).can_deliver, true);
 
-    const witness = await fetch(`${base}/witness`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ url: "https://example.com", extract: { a: "string" } }) });
-    assert.equal(witness.status, 503, "deliverability-first: unpaid witness cannot pass the quote without a retrieve adapter");
-  });
+    const witness = await fetch(`${base}/witness`, { method: "POST", headers: { "content-type": "application/json" }, body });
+    assert.equal(witness.status, 402, "unpaid witness 402s only after a deliverable quote");
+  }, { readerFetch });
 });
