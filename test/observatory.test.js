@@ -56,6 +56,7 @@ test("paid-shaped receipts append, verify with process key, and skip junk", () =
     source_hash: "aa",
     evidence: "starter_price: 49",
     agreement: "1-of-1",
+    method: spec,
     spec_hash: specHash(spec),
     valid_until: new Date(Date.parse(observed_at) + VALID_FOR_MS).toISOString(),
     vantage: "box",
@@ -63,10 +64,13 @@ test("paid-shaped receipts append, verify with process key, and skip junk", () =
   const card = signReceipt(rest, key);
   appendObservation(dir, card);
   appendObservation(dir, { not: "a receipt" });
+  const drifted = signReceipt({ ...rest, method: { ...spec, url: "https://example.com/other" } }, key);
+  appendObservation(dir, drifted);
   const loaded = readObservations(dir);
-  assert.equal(loaded.length, 2);
+  assert.equal(loaded.length, 3);
   assert.ok(verifyReceipt(loaded[0], key.publicKey));
+  assert.ok(verifyReceipt(loaded[2], key.publicKey), "drifted card is validly signed but must not group");
   const sky = compareReceipts(loaded, key.publicKey, observed_at);
   assert.deepEqual(sky.map((x) => x.state), ["steady"]);
-  assert.equal(sky[0].total, 1);
+  assert.equal(sky[0].total, 1, "method/spec_hash drift must not group");
 });

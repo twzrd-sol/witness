@@ -100,6 +100,7 @@ export function compareReceipts(results, publicKey, now = new Date()) {
   const groups = new Map();
   for (const r of results) {
     if (!verifyReceipt(r, publicKey)) continue;
+    if (!r.method || specHash(r.method) !== r.spec_hash) continue;
     const list = groups.get(r.spec_hash) ?? [];
     list.push(r);
     groups.set(r.spec_hash, list);
