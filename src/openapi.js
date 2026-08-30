@@ -2,6 +2,8 @@ import { witnessAccepts } from "./server.js";
 
 const body = (schema) => ({ required: true, content: { "application/json": { schema } } });
 const out = (description, schema = {}) => ({ description, content: { "application/json": { schema } } });
+const textOut = (description, type) => ({ description, content: { [type]: { schema: { type: "string" } } } });
+const pub = (summary, response) => ({ get: { summary, security: [], responses: { "200": response } } });
 
 const quoteRequest = {
   type: "object",
@@ -72,6 +74,52 @@ export function openapiDoc(env = process.env) {
           },
         },
       },
+      "/pubkey": pub("Signing key — verify receipts", out("ed25519 public key (base64 SPKI)", {
+        type: "object",
+        required: ["pubkey"],
+        properties: { pubkey: { type: "string", description: "Verify receipt signatures over deep canonical JSON." } },
+      })),
+      "/observatory": pub("Receipt log — every verified observation", textOut("Rendered star map; contradictions and expiry visible.", "text/html")),
+      "/llms.txt": pub("Agent docs — plain text", textOut("Markdown: endpoints, default documented method, price.", "text/markdown")),
+      "/skill.md": pub("Agent skill — paid observation", textOut("Markdown: quote-first flow and receipt fields.", "text/markdown")),
+      "/.well-known/x402": pub("Payment descriptor for POST /witness", out("x402 v2 descriptor: resource, price, both rails.", {
+        type: "object",
+        required: ["resource", "x402Version", "price_usdc", "accepts"],
+        properties: {
+          resource: { const: `${base}/witness`, description: "The protected resource this descriptor pays for." },
+          x402Version: { const: 2 },
+          price_usdc: { const: "0.01" },
+          accepts: {
+            type: "array",
+            items: {
+              type: "object",
+              required: ["scheme", "network", "price", "payTo"],
+              properties: {
+                scheme: { const: "exact" },
+                network: { enum: ["eip155:8453", "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"] },
+                price: { const: "$0.01" },
+                payTo: { type: "string" },
+              },
+            },
+          },
+        },
+      })),
+      "/.well-known/agent.json": pub("Agent card", out("Discovery card for crawlers.", {
+        type: "object",
+        required: ["name", "url", "skills"],
+        properties: {
+          name: { const: "witness" },
+          url: { const: base },
+          skills: {
+            type: "array",
+            items: {
+              type: "object",
+              required: ["id", "name"],
+              properties: { id: { type: "string" }, name: { type: "string" } },
+            },
+          },
+        },
+      })),
     },
     components: { securitySchemes: { x402: { type: "http", description: "x402 exact scheme, $0.01 USDC; see GET /.well-known/x402." } } },
   };

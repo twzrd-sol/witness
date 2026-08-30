@@ -40,8 +40,28 @@ test("GET /openapi.json serves the doc on the host surface", async () => {
     assert.equal(res.status, 200);
     const served = await res.json();
     assert.equal(served.servers[0].url, "https://witness.outbid.sh", "canonical origin even without env");
-    assert.deepEqual(Object.keys(served.paths), ["/quote", "/witness"]);
+    assert.deepEqual(Object.keys(served.paths).sort(), ["/.well-known/agent.json", "/.well-known/x402", "/llms.txt", "/observatory", "/pubkey", "/quote", "/skill.md", "/witness"]);
   } finally {
     await new Promise((r) => server.close(r));
   }
+});
+
+test("GET discovery paths documented public (security: []) — no GET /quote or /witness", () => {
+  const doc = openapiDoc({});
+  for (const p of ["/pubkey", "/.well-known/x402", "/observatory", "/llms.txt", "/skill.md", "/.well-known/agent.json"]) {
+    const g = doc.paths[p].get;
+    assert.ok(g, `${p} has a GET entry`);
+    assert.deepEqual(g.security, [], `${p} is explicitly public`);
+    assert.ok(g.responses["200"], `${p} documents 200`);
+  }
+  assert.equal(doc.paths["/pubkey"].get.responses["200"].content["application/json"].schema.required.join(), "pubkey");
+  const x402 = doc.paths["/.well-known/x402"].get.responses["200"].content["application/json"].schema;
+  assert.equal(x402.properties.resource.const, "https://witness.outbid.sh/witness");
+  assert.deepEqual(x402.properties.accepts.items.properties.network.enum, ["eip155:8453", "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"]);
+  assert.ok(doc.paths["/observatory"].get.responses["200"].content["text/html"], "observatory is text/html");
+  assert.ok(doc.paths["/llms.txt"].get.responses["200"].content["text/markdown"], "llms.txt is text/markdown");
+  assert.ok(doc.paths["/skill.md"].get.responses["200"].content["text/markdown"], "skill.md is text/markdown");
+  assert.deepEqual(doc.paths["/.well-known/agent.json"].get.responses["200"].content["application/json"].schema.required, ["name", "url", "skills"]);
+  assert.equal(doc.paths["/quote"].get, undefined, "no GET /quote");
+  assert.equal(doc.paths["/witness"].get, undefined, "no GET /witness");
 });
