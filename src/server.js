@@ -52,7 +52,7 @@ export async function handleQuote(body, { retrieve } = {}) {
   if (!text) return { status: 422, json: { reason: "retrieve_empty" } };
   const { missing } = fillExtract(text, extract);
   if (missing.length) return { status: 422, json: { reason: "extract_missing", missing } };
-  return { status: 200, json: { price_usdc: PRICE_USDC, replicas: replicas || 1, can_deliver: true } };
+  return { status: 200, json: { price_usdc: PRICE_USDC, replicas: replicas || 1, can_deliver: true }, text };
 }
 
 /** Unpaid without paywall → inline 402. Payment settled upstream (or deps.paid) → sign. */
@@ -70,14 +70,17 @@ export async function handleWitness(body, deps = {}) {
       },
     };
   }
-  let text;
-  try {
-    const res = await deps.retrieve(body.url);
-    text = typeof res === "string" ? res : res && res.text;
-  } catch {
-    return { status: 422, json: { reason: "retrieve_failed" } };
+  // Quote already retrieved the source — reuse it; a paid /witness must not scrape twice.
+  let text = q.text;
+  if (text === undefined) {
+    try {
+      const res = await deps.retrieve(body.url);
+      text = typeof res === "string" ? res : res && res.text;
+    } catch {
+      return { status: 422, json: { reason: "retrieve_failed" } };
+    }
+    if (!text) return { status: 422, json: { reason: "retrieve_empty" } };
   }
-  if (!text) return { status: 422, json: { reason: "retrieve_empty" } };
   const { values, missing } = fillExtract(text, body.extract);
   if (missing.length) return { status: 422, json: { reason: "extract_missing", missing } };
   if (!evalAssertion(values, body.assertion)) {

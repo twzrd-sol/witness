@@ -157,6 +157,19 @@ test("paywall wired: extract miss → 422, the paywall never bills", async () =>
   await new Promise((r) => server.close(r));
 });
 
+test("paid witness reuses the quote retrieve — one scrape per observation", async () => {
+  let calls = 0;
+  const key = generateProcessKey();
+  const out = await handleWitness(BODY, {
+    retrieve: async () => { calls++; return { text: FIXTURE }; },
+    paid: true,
+    key,
+  });
+  assert.equal(out.status, 200);
+  assert.equal(calls, 1, "paid /witness must scrape once, not twice");
+  assert.equal(out.json.method.url, BODY.url);
+});
+
 test("nested-value tampering fails receipt verification", async () => {
   const key = generateProcessKey();
   const out = await handleWitness(BODY, {
