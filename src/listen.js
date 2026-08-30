@@ -11,7 +11,7 @@ import { openapiDoc } from "./openapi.js";
 const METHOD_DOC = JSON.stringify({
   url: "https://outbid.sh/top",
   retrieval: "scrape",
-  extract: { rank: "number", url: "string", bid_usdc: "number" },
+  extract: { rank: "number" },
   assertion: "rank == 1",
 }, null, 2);
 

@@ -35,6 +35,19 @@ test("discovery GETs: robots, llms, skill, well-knowns (200, no pay)", async () 
   });
 });
 
+test("default documented method extract is rank-only (llms.txt METHOD_DOC)", async () => {
+  await withServer({}, async (base) => {
+    const body = await (await fetch(`${base}/llms.txt`)).text();
+    const block = body.match(/```json\n([\s\S]*?)```/);
+    assert.ok(block, "llms.txt carries the METHOD_DOC json block");
+    const method = JSON.parse(block[1]);
+    assert.equal(method.url, "https://outbid.sh/top");
+    assert.equal(method.retrieval, "scrape");
+    assert.equal(method.assertion, "rank == 1");
+    assert.deepEqual(method.extract, { rank: "number" }, "extract is rank-only — no bid_usdc/url required keys");
+  });
+});
+
 test("reader payment wiring: payFetch only when enabled AND valid wallet key", async () => {
   const underlying = async () => new Response("ok");
   assert.deepEqual(readerPayment({}, underlying), {});
