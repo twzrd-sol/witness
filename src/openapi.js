@@ -1,6 +1,6 @@
 import { witnessAccepts } from "./server.js";
 
-const body = (schema) => ({ required: true, content: { "application/json": { schema } } });
+const body = (schema, example) => ({ required: true, content: { "application/json": { schema, ...(example ? { example } : {}) } } });
 const out = (description, schema = {}) => ({ description, content: { "application/json": { schema } } });
 const textOut = (description, type) => ({ description, content: { [type]: { schema: { type: "string" } } } });
 const pub = (summary, response) => ({ get: { summary, security: [], responses: { "200": response } } });
@@ -11,9 +11,13 @@ const quoteRequest = {
   properties: {
     url: { type: "string", format: "uri", description: "Public https URL to observe." },
     extract: { type: "object", minProperties: 1, additionalProperties: { type: "string" }, description: "Field name -> expected type (number|string) the page must contain." },
+    retrieval: { type: "string", description: 'Retrieval the host performs (currently "scrape"). Optional; defaults to "scrape".' },
+    assertion: { type: "string", description: 'Optional post-condition checked against extracted values, grammar "key < number" (e.g. "rank < 100"). A failed assertion is 422 and nothing is billed.' },
     replicas: { type: "integer", enum: [1] },
   },
 };
+
+const EXAMPLE = { url: "https://outbid.sh/top", extract: { rank: "number" }, retrieval: "scrape", assertion: "rank < 100", replicas: 1 };
 
 const receiptSchema = {
   type: "object",
@@ -50,7 +54,7 @@ export function openapiDoc(env = process.env) {
           summary: "Free deliverability probe",
           description: "200 means the observation can be performed now; 422 means it cannot (ssrf refusal, retrieve failure, empty page, or extract fields missing). Never bills.",
           security: [],
-          requestBody: body(quoteRequest),
+          requestBody: body(quoteRequest, EXAMPLE),
           responses: {
             "200": out("Deliverable now", { type: "object", properties: { price_usdc: { const: "0.01" }, replicas: { type: "integer" }, can_deliver: { const: true } } }),
             "400": out("Malformed body or extract"),
@@ -65,7 +69,7 @@ export function openapiDoc(env = process.env) {
           "x-payment": { protocol: "x402", x402Version: 2, price_usdc: "0.01", accepts: witnessAccepts({ evmAddress: env.EVM_ADDRESS, svmAddress: env.SVM_ADDRESS }) },
           "x-payment-info": { protocols: [{ x402: {} }], price: { mode: "fixed", currency: "USD", amount: "0.010000" }, descriptor: "GET /.well-known/x402" },
           security: [{ x402: [] }],
-          requestBody: body(quoteRequest),
+          requestBody: body(quoteRequest, EXAMPLE),
           responses: {
             "200": out("Signed receipt", receiptSchema),
             "402": out("x402 payment required", { type: "object", properties: { x402Version: { type: "integer" }, accepts: { type: "array", items: { type: "object", properties: { scheme: { const: "exact" }, network: { type: "string" }, price: { const: "$0.01" }, payTo: { type: "string" } } } } } }),
