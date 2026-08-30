@@ -4,7 +4,7 @@ import { mkdtempSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { generateProcessKey, verifyReceipt } from "../src/receipt.js";
-import { methodFromRequest, specHash } from "../src/observatory.js";
+import { methodFromRequest, readObservations, specHash } from "../src/observatory.js";
 import { createApp, handleWitness } from "../src/server.js";
 
 const FIXTURE = `<p>starter_price: $49/mo</p><p>currency: USD</p>`;
@@ -27,6 +27,9 @@ test("receipt verify with process pubkey", async () => {
   assert.equal(out.json.vantage, "box");
   assert.equal(out.json.valid_until, "2026-08-30T01:00:00.000Z");
   assert.equal(out.json.spec_hash, specHash(methodFromRequest(BODY)));
+  assert.deepEqual(out.json.method, methodFromRequest(BODY));
+  const methodTampered = { ...out.json, method: { ...out.json.method, url: "https://example.com/evil" } };
+  assert.equal(verifyReceipt(methodTampered, key.publicKey), false, "method is inside the signature");
 });
 
 test("paid card appends; /observatory reads the log, not seeds", async () => {
@@ -49,6 +52,7 @@ test("paid card appends; /observatory reads the log, not seeds", async () => {
     observationsDir: dir,
   });
   assert.equal(miss.status, 422);
+  assert.equal(readObservations(dir).length, 1, "422 must not append");
   const app = createApp({ key, retrieve: async () => ({ text: FIXTURE }), observationsDir: dir, now });
   const server = app.listen(0, "127.0.0.1");
   await new Promise((r) => server.once("listening", r));
