@@ -14,6 +14,28 @@ test("reader adapter is fail-closed: refuse, error, non-200, empty all throw", a
   assert.equal(await makeRetrieve({ fetch: ok("hello") })("https://example.com/top"), "hello");
 });
 
+test("reader 402 → unpaid default throws; paid retry only when enabled + injected", async () => {
+  const res402 = { ok: false, status: 402, text: async () => "" };
+  let unpaidCalls = 0, paidCalls = 0;
+  const unpaid = async () => { unpaidCalls++; return res402; };
+  const paid = async () => { paidCalls++; return ok("rank: 1")(); };
+
+  await assert.rejects(makeRetrieve({ fetch: unpaid, payFetch: paid, paymentsEnabled: false })("https://example.com/top"), /reader_402/, "no paying retry while disabled");
+  assert.equal(unpaidCalls, 1);
+  assert.equal(paidCalls, 0);
+
+  assert.equal(await makeRetrieve({ fetch: unpaid, payFetch: paid, paymentsEnabled: true })("https://example.com/top"), "rank: 1", "enabled + injected pays once");
+  assert.equal(unpaidCalls, 2);
+  assert.equal(paidCalls, 1);
+});
+
+test("a failing paid retry stays fail-closed", async () => {
+  const res402 = { ok: false, status: 402, text: async () => "" };
+  const empty = { ok: true, status: 200, text: async () => "   " };
+  await assert.rejects(makeRetrieve({ fetch: async () => res402, payFetch: async () => res402, paymentsEnabled: true })("https://example.com"), /reader_402/);
+  await assert.rejects(makeRetrieve({ fetch: async () => res402, payFetch: async () => empty, paymentsEnabled: true })("https://example.com"), /reader_empty/);
+});
+
 test("quote 200 with fixture retrieve — reader URL carries the encoded target", async () => {
   let seen;
   const readerFetch = async (url) => {
