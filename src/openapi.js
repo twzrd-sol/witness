@@ -63,6 +63,15 @@ export function openapiDoc(env = process.env) {
         },
       },
       "/witness": {
+        get: {
+          summary: "Crawlable discovery — 402 payment challenge",
+          description: "Discovery endpoint: always answers 402 with a payment-required challenge header (x402Version 2, canonical resource, both rails). No quote, no retrieve, never bills. The paid deliverable is POST /witness.",
+          security: [],
+          responses: {
+            "402": out("x402 payment required — challenge is base64-JSON in the PAYMENT-REQUIRED header", { type: "object" }),
+            "405": out("GET with payment headers is refused — observe via POST /witness"),
+          },
+        },
         post: {
           summary: "Paid observation — signed receipt",
           description: "Quote-first: an unpaid deliverable request gets an x402 402 challenge; after payment settles the observation runs and a receipt is signed. A 422 never bills.",

@@ -170,6 +170,31 @@ test("paid witness reuses the quote retrieve — one scrape per observation", as
   assert.equal(out.json.method.url, BODY.url);
 });
 
+test("GET /witness is crawlable discovery: 402 challenge, zero retrieve", async () => {
+  let calls = 0;
+  const app = createApp({
+    key: generateProcessKey(),
+    retrieve: async () => { calls++; return { text: FIXTURE }; },
+    facilitator: fakeFacilitator,
+    paywall: { evmAddress: "0xabc0000000000000000000000000000000000001", svmAddress: "F1AbWuXJcBT9arW9wc6Xr2vom5NBtngWsz6Ht16jRBLM" },
+  });
+  const server = app.listen(0, "127.0.0.1");
+  await new Promise((r) => server.once("listening", r));
+  try {
+    const res = await fetch(`http://127.0.0.1:${server.address().port}/witness`);
+    assert.equal(res.status, 402);
+    const challenge = JSON.parse(Buffer.from(res.headers.get("payment-required"), "base64").toString("utf8"));
+    assert.equal(challenge.x402Version, 2);
+    assert.equal(challenge.resource.url, "https://witness.outbid.sh/witness");
+    assert.deepEqual(challenge.accepts.map((a) => a.network).sort(), ["eip155:8453", "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"]);
+    assert.equal(calls, 0, "GET must not retrieve");
+    const paid = await fetch(`http://127.0.0.1:${server.address().port}/witness`, { headers: { "x-payment": "bogus" } });
+    assert.equal(paid.status, 405, "paid GET refused before any facilitator call");
+  } finally {
+    await new Promise((r) => server.close(r));
+  }
+});
+
 test("nested-value tampering fails receipt verification", async () => {
   const key = generateProcessKey();
   const out = await handleWitness(BODY, {

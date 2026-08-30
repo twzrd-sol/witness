@@ -136,6 +136,13 @@ export function createApp(deps = {}) {
       return reply(res, out);
     };
     app.post("/witness", deliverable, paymentMiddleware({ "POST /witness": { resource: resourceUrl, accepts, mimeType: "application/json", description: "Independent fact + signed receipt. $0.01 USDC." } }, rs), witness);
+    // Crawlable discovery: GET answers the same 402 challenge with zero retrieve.
+    app.get("/witness", (req, res, next) => {
+      if (req.headers["payment-signature"] || req.headers["x-payment"]) {
+        return res.status(405).json({ reason: "get_discovery_only_use_post" });
+      }
+      next();
+    }, paymentMiddleware({ "GET /witness": { resource: resourceUrl, accepts, mimeType: "application/json", description: "Discovery challenge — the paid deliverable is POST /witness." } }, rs));
   } else {
     app.post("/witness", witness);
   }

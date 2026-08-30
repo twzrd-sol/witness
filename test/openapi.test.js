@@ -71,5 +71,9 @@ test("GET discovery paths documented public (security: []) — no GET /quote or 
   assert.ok(doc.paths["/skill.md"].get.responses["200"].content["text/markdown"], "skill.md is text/markdown");
   assert.deepEqual(doc.paths["/.well-known/agent.json"].get.responses["200"].content["application/json"].schema.required, ["name", "url", "skills"]);
   assert.equal(doc.paths["/quote"].get, undefined, "no GET /quote");
-  assert.equal(doc.paths["/witness"].get, undefined, "no GET /witness");
+  const wg = doc.paths["/witness"].get;
+  assert.ok(wg, "GET /witness documented as discovery");
+  assert.deepEqual(wg.security, [], "GET /witness discovery is not an auth requirement");
+  assert.ok(wg.responses["402"], "GET /witness documents the 402 challenge");
+  assert.equal(wg.responses["200"], undefined, "GET /witness is not a paid deliverable");
 });
