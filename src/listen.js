@@ -51,9 +51,8 @@ Observe a public web fact; receive a signed, verifiable, perishable receipt.
    spec_hash, valid_until (1h), vantage.
 
 The receipt binds the full method (url, retrieval, extract, assertion), so a second
-vantage can re-observe the same canonical observation and contradict it.
-\`GET /observatory\` renders every verified receipt logged by this host; contradictions
-and expiry are visible there.
+vantage can re-observe the same canonical observation and contradict it; \`GET /observatory\`
+renders every verified receipt logged by this host, with contradictions and expiry visible.
 
 Default documented method — observe https://outbid.sh/top (full method JSON: GET /llms.txt).
 

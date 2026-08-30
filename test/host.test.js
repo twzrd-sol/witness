@@ -14,8 +14,7 @@ test("discovery GETs: robots, llms, skill, well-knowns (200, no pay)", async () 
     const robots = await fetch(`${base}/robots.txt`);
     assert.equal(robots.status, 200);
     const rb = await robots.text();
-    assert.match(rb, /Disallow: \/witness/);
-    assert.match(rb, /Allow: \/quote/);
+    assert.ok(/Disallow: \/witness/.test(rb) && /Allow: \/quote/.test(rb), "robots allows discovery, disallows /witness");
 
     for (const p of ["/llms.txt", "/skill.md"]) {
       const doc = await fetch(`${base}${p}`);
