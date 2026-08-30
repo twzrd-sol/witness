@@ -39,6 +39,7 @@ export function openapiDoc(env = process.env) {
       title: "witness",
       version: "0.1.0",
       description: "Paid, attributable, perishable observation of public web facts. Run POST /quote first (free): a 200 means the experiment can be performed; only then pay POST /witness ($0.01 USDC via x402, Base or Solana) for a signed receipt. Receipts bind their full method, expire in 1h, and are rendered with contradictions and expiry visible at GET /observatory. Agent docs: /llms.txt and /skill.md. Signing key: GET /pubkey. Payment descriptor: GET /.well-known/x402. robots.txt disallows /witness for crawlers.",
+      "x-guidance": "Two-step flow: (1) POST /quote with {url, extract} — free deliverability probe; a 200 with can_deliver:true means the observation can be performed now. (2) Only then POST /witness with the same body and an x402 payment of $0.01 USDC (Base or Solana) — the response is a signed, perishable receipt bound to the full method. A 422 means not deliverable and nothing is billed. Docs: /llms.txt and /skill.md; receipt log: /observatory; signing key: /pubkey.",
     },
     servers: [{ url: base }],
     paths: {
@@ -59,6 +60,7 @@ export function openapiDoc(env = process.env) {
           summary: "Paid observation — signed receipt",
           description: "Quote-first: an unpaid deliverable request gets an x402 402 challenge; after payment settles the observation runs and a receipt is signed. A 422 never bills.",
           "x-payment": { protocol: "x402", x402Version: 2, price_usdc: "0.01", accepts: witnessAccepts({ evmAddress: env.EVM_ADDRESS, svmAddress: env.SVM_ADDRESS }) },
+          "x-payment-info": { protocols: [{ x402: {} }], price: { mode: "fixed", currency: "USD", amount: "0.010000" }, descriptor: "GET /.well-known/x402" },
           security: [{ x402: [] }],
           requestBody: body(quoteRequest),
           responses: {

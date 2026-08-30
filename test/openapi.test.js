@@ -15,8 +15,13 @@ test("openapi contract: quote free, witness quote-first paid x402, canonical ori
 
   const w = doc.paths["/witness"].post;
   assert.equal(w["x-payment"].price_usdc, "0.01");
+  assert.deepEqual(w["x-payment-info"].protocols, [{ x402: {} }]);
+  assert.deepEqual(w["x-payment-info"].price, { mode: "fixed", currency: "USD", amount: "0.010000" });
   assert.deepEqual(w["x-payment"].accepts.map((a) => a.network).sort(), ["eip155:8453", "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"]);
   assert.ok(w["x-payment"].accepts.every((a) => a.payTo), "accepts carry payTo when env set");
+  assert.match(doc.info["x-guidance"], /POST \/quote/);
+  assert.match(doc.info["x-guidance"], /POST \/witness/);
+  assert.match(doc.info["x-guidance"], /\$0\.01/);
   assert.deepEqual(Object.keys(w.responses).sort(), ["200", "400", "402", "422"]);
   const req = w.requestBody.content["application/json"].schema;
   assert.deepEqual(req.required, ["url", "extract"]);
