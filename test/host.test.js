@@ -25,6 +25,7 @@ test("discovery GETs: robots, llms, skill, well-knowns (200, no pay)", async () 
     }
 
     const x402 = await (await fetch(`${base}/.well-known/x402`)).json();
+    assert.equal(x402.resource, "https://witness.outbid.sh/witness", "well-known resource is the canonical https URL");
     assert.equal(x402.price_usdc, "0.01");
     assert.deepEqual(x402.accepts.map((a) => a.network).sort(), ["eip155:8453", "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"]);
     assert.ok(x402.accepts.every((a) => a.payTo));

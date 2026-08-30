@@ -114,9 +114,29 @@ test("paywall wired: unpaid deliverable → real x402 402 challenge, both rails"
   assert.equal(res.status, 402);
   const challenge = JSON.parse(Buffer.from(res.headers.get("payment-required"), "base64").toString("utf8"));
   assert.equal(challenge.x402Version, 2);
+  assert.equal(challenge.resource.url, "https://witness.outbid.sh/witness", "402 resource is canonical https, not request-derived http://127.0.0.1");
   const nets = challenge.accepts.map((a) => a.network).sort();
   assert.deepEqual(nets, ["eip155:8453", "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"]);
   assert.ok(challenge.accepts.every((a) => (a.maxAmountRequired ?? a.amount) === "10000"));
+  await new Promise((r) => server.close(r));
+});
+
+test("paywall resource URL follows publicBaseUrl (PUBLIC_BASE_URL), never the request host", async () => {
+  const app = createApp({
+    key: generateProcessKey(),
+    retrieve: async () => ({ text: FIXTURE }),
+    facilitator: fakeFacilitator,
+    paywall: { svmAddress: "F1AbWuXJcBT9arW9wc6Xr2vom5NBtngWsz6Ht16jRBLM" },
+    publicBaseUrl: "https://witness.example.net",
+  });
+  const server = app.listen(0, "127.0.0.1");
+  await new Promise((r) => server.once("listening", r));
+  const res = await fetch(`http://127.0.0.1:${server.address().port}/witness`, {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(BODY),
+  });
+  assert.equal(res.status, 402);
+  const challenge = JSON.parse(Buffer.from(res.headers.get("payment-required"), "base64").toString("utf8"));
+  assert.equal(challenge.resource.url, "https://witness.example.net/witness");
   await new Promise((r) => server.close(r));
 });
 

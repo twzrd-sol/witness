@@ -106,6 +106,7 @@ export async function handleWitness(body, deps = {}) {
 export function createApp(deps = {}) {
   const key = processKey(deps);
   const wired = { ...deps, key, observationsDir: deps.observationsDir ?? "data" };
+  const resourceUrl = `${deps.publicBaseUrl || "https://witness.outbid.sh"}/witness`;
   const app = express();
   app.use(express.json({ limit: "64kb" }));
   const reply = (res, out) => res.status(out.status).json(out.json);
@@ -131,7 +132,7 @@ export function createApp(deps = {}) {
       if (out.status === 200) return next();
       return reply(res, out);
     };
-    app.post("/witness", deliverable, paymentMiddleware({ "POST /witness": { accepts, mimeType: "application/json", description: "Independent fact + signed receipt. $0.01 USDC." } }, rs), witness);
+    app.post("/witness", deliverable, paymentMiddleware({ "POST /witness": { resource: resourceUrl, accepts, mimeType: "application/json", description: "Independent fact + signed receipt. $0.01 USDC." } }, rs), witness);
   } else {
     app.post("/witness", witness);
   }
