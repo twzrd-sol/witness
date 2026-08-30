@@ -22,7 +22,13 @@ test("discovery GETs: robots, llms, skill, well-knowns (200, no pay)", async () 
       const body = await doc.text();
       assert.match(body, /https:\/\/outbid\.sh\/top/, `${p} documents the observed URL`);
       assert.match(body, /0\.01/, `${p} states the price`);
+      assert.match(body, /twice/i, `${p} carries the twice-pay operator ask`);
     }
+    const llms = await (await fetch(`${base}/llms.txt`)).text();
+    assert.match(llms, /rank < 100/, "llms states the assertion grammar");
+    assert.match(llms, /total >= 2, same spec_hash/, "llms states the observatory twice-pay check");
+    const skill = await (await fetch(`${base}/skill.md`)).text();
+    assert.match(skill, /observatory/, "skill points at the receipt log");
 
     const x402 = await (await fetch(`${base}/.well-known/x402`)).json();
     assert.equal(x402.resource, "https://witness.outbid.sh/witness", "well-known resource is the canonical https URL");

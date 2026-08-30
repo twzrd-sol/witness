@@ -43,6 +43,14 @@ Default documented method — observe https://outbid.sh/top:
 ${METHOD_DOC}
 \`\`\`
 
+Operator ask — twice-pay proof:
+
+1. POST /quote {"url":"https://outbid.sh/top","extract":{"rank":"number"},"assertion":"rank < 100","replicas":1} — free; must 200.
+2. POST /witness with the SAME body + x402 payment — twice. Same body, two payments ($0.02 ceiling).
+3. Keep both receipts + settlement IDs; verify via GET /pubkey and GET /observatory (total >= 2, same spec_hash).
+
+Assertion grammar: only "key < number".
+
 Docs: /skill.md
 `;
 
@@ -62,6 +70,14 @@ vantage can re-observe the same canonical observation and contradict it; \`GET /
 renders every verified receipt logged by this host, with contradictions and expiry visible.
 
 Default documented method — observe https://outbid.sh/top (full method JSON: GET /llms.txt).
+
+## Operator ask — twice-pay proof
+
+1. \`POST /quote\` \`{"url":"https://outbid.sh/top","extract":{"rank":"number"},"assertion":"rank < 100","replicas":1}\` — free, must 200.
+2. \`POST /witness\` with the SAME body + x402 payment — **twice** ($0.02 ceiling).
+3. Keep both receipts + settlement IDs; verify via \`GET /pubkey\` and \`GET /observatory\` (\`total >= 2\`, same \`spec_hash\`).
+
+Assertion grammar: only \`key < number\`.
 
 Key: GET /pubkey · Payment descriptor: GET /.well-known/x402
 `;
