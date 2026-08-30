@@ -44,9 +44,18 @@ export function openapiDoc(env = process.env) {
     info: {
       title: "witness",
       version: "0.1.0",
-      description: "Paid, attributable, perishable observation of public web facts. Run POST /quote first (free): a 200 means the experiment can be performed; only then pay POST /witness ($0.01 USDC via x402, Base or Solana) for a signed receipt. Receipts bind their full method, expire in 1h, and are rendered with contradictions and expiry visible at GET /observatory. Agent docs: /llms.txt and /skill.md. Signing key: GET /pubkey. Payment descriptor: GET /.well-known/x402. robots.txt disallows /witness for crawlers.",
+      description: "Paid, attributable, perishable observation of public web facts. witness is an independent oracle: it observes one stated fact (e.g. a page rank) and returns a signed observation. Quote-first — run POST /quote (free): a 200 means the experiment can be performed; only then pay POST /witness ($0.01 USDC via x402, Base or Solana) for a signed receipt. Receipts bind their full method, expire in 1h, and are rendered with contradictions and expiry visible at GET /observatory. Agent docs: /llms.txt and /skill.md. Signing key: GET /pubkey. Payment descriptor: GET /.well-known/x402. robots.txt disallows /witness for crawlers.",
       "x-guidance": "Two-step flow: (1) POST /quote with {url, extract} — free deliverability probe; a 200 with can_deliver:true means the observation can be performed now. (2) Only then POST /witness with the same body and an x402 payment of $0.01 USDC (Base or Solana) — the response is a signed, perishable receipt bound to the full method. A 422 means not deliverable and nothing is billed. Docs: /llms.txt and /skill.md; receipt log: /observatory; signing key: /pubkey.",
     },
+    tags: [
+      { name: "observation", description: "A single paid observation of a public web fact at a point in time." },
+      { name: "receipt", description: "The signed, verifiable, perishable result of an observation." },
+      { name: "oracle", description: "Independent oracle semantics: the same method is re-observable by a second vantage." },
+      { name: "fact", description: "The stated fact to observe, bound inside the method and receipt." },
+      { name: "rank", description: "Default documented observation: outbid.sh/top rank." },
+      { name: "x402", description: "Payment protocol: $0.01 USDC, Base or Solana." },
+      { name: "empiricism", description: "Claims are settled by observation, not assertion." },
+    ],
     servers: [{ url: base }],
     paths: {
       "/quote": {
@@ -65,6 +74,7 @@ export function openapiDoc(env = process.env) {
       "/witness": {
         get: {
           summary: "Crawlable discovery — 402 payment challenge",
+          tags: ["observation", "receipt", "x402"],
           description: "Discovery endpoint: always answers 402 with a payment-required challenge header (x402Version 2, canonical resource, both rails). No quote, no retrieve, never bills. The paid deliverable is POST /witness.",
           security: [],
           responses: {
@@ -74,6 +84,7 @@ export function openapiDoc(env = process.env) {
         },
         post: {
           summary: "Paid observation — signed receipt",
+          tags: ["observation", "receipt", "x402"],
           description: "Quote-first: an unpaid deliverable request gets an x402 402 challenge; after payment settles the observation runs and a receipt is signed. A 422 never bills.",
           "x-payment": { protocol: "x402", x402Version: 2, price_usdc: "0.01", accepts: witnessAccepts({ evmAddress: env.EVM_ADDRESS, svmAddress: env.SVM_ADDRESS }) },
           "x-payment-info": { protocols: [{ x402: {} }], price: { mode: "fixed", currency: "USD", amount: "0.010000" }, descriptor: "GET /.well-known/x402" },

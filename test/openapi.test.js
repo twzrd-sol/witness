@@ -38,6 +38,12 @@ test("openapi contract: quote free, witness quote-first paid x402, canonical ori
   const r402 = w.responses["402"].content["application/json"].schema;
   assert.deepEqual(r402.properties.accepts.type, "array");
   assert.ok(doc.info.description.includes("/observatory") && doc.info.description.includes("/llms.txt"), "agent guidance present");
+  assert.ok(doc.tags?.length >= 7, "top-level tags declared");
+  assert.deepEqual(doc.tags.map((t) => t.name).sort(), ["empiricism", "fact", "observation", "oracle", "rank", "receipt", "x402"]);
+  assert.match(doc.info.description, /oracle/i, "description names the oracle role");
+  assert.match(doc.info.description, /fact/i, "description names the fact");
+  assert.deepEqual(w.tags, ["observation", "receipt", "x402"]);
+  assert.deepEqual(doc.paths["/witness"].get.tags, ["observation", "receipt", "x402"]);
 });
 
 test("GET /openapi.json serves the doc on the host surface", async () => {
