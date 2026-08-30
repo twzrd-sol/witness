@@ -1,5 +1,9 @@
 #!/usr/bin/env node
 import { pathToFileURL } from "node:url";
+import { x402Client } from "@x402/core/client";
+import { ExactEvmScheme } from "@x402/evm/exact/client";
+import { privateKeyToAccount } from "viem/accounts";
+import { wrapFetchWithPayment } from "@x402/fetch";
 import { createApp, witnessAccepts } from "./server.js";
 import { makeRetrieve } from "./retrieve.js";
 
@@ -60,10 +64,26 @@ Default documented method — observe https://outbid.sh/top (full method JSON: G
 Key: GET /pubkey · Payment descriptor: GET /.well-known/x402
 `;
 
+/**
+ * Paying fetch for reader.outbid.sh/scrape (Base x402, $0.005): only when
+ * X402_READER_PAYMENTS_ENABLED=1 AND a valid wallet key is set. Anything
+ * else returns {} — the reader stays on the unpaid path, which fails closed.
+ */
+export function readerPayment(env, readerFetch) {
+  if (env.X402_READER_PAYMENTS_ENABLED !== "1") return {};
+  const key = env.X402_READER_WALLET_KEY;
+  if (!key || !/^0x[0-9a-fA-F]{64}$/.test(key)) {
+    console.error("witness: X402_READER_PAYMENTS_ENABLED=1 but X402_READER_WALLET_KEY missing/invalid — reader stays unpaid");
+    return {};
+  }
+  const client = new x402Client().register("eip155:8453", new ExactEvmScheme(privateKeyToAccount(key)));
+  return { paymentsEnabled: true, payFetch: wrapFetchWithPayment(readerFetch ?? globalThis.fetch, client) };
+}
+
 export function createHostApp(env = process.env, { readerFetch } = {}) {
   const base = env.PUBLIC_BASE_URL || "https://witness.outbid.sh";
   const paywall = { evmAddress: env.EVM_ADDRESS, svmAddress: env.SVM_ADDRESS };
-  const app = createApp({ paywall, facilitatorUrl: env.FACILITATOR_URL, observationsDir: env.OBSERVATIONS_DIR || "data", retrieve: makeRetrieve({ fetch: readerFetch }) });
+  const app = createApp({ paywall, facilitatorUrl: env.FACILITATOR_URL, observationsDir: env.OBSERVATIONS_DIR || "data", retrieve: makeRetrieve({ fetch: readerFetch, ...readerPayment(env, readerFetch) }) });
   const text = (res, body, type = "text/plain") => res.type(type).send(body);
   app.get("/robots.txt", (_q, res) => text(res, ROBOTS));
   app.get("/llms.txt", (_q, res) => text(res, LLMS, "text/markdown"));

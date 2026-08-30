@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert";
-import { createHostApp } from "../src/listen.js";
+import { createHostApp, readerPayment } from "../src/listen.js";
 
 async function withServer(env, fn, opts = {}) {
   const server = createHostApp(env, opts).listen(0, "127.0.0.1");
@@ -33,6 +33,18 @@ test("discovery GETs: robots, llms, skill, well-knowns (200, no pay)", async () 
     assert.equal(card.url, "https://witness.outbid.sh");
     assert.ok(card.skills.length);
   });
+});
+
+test("reader payment wiring: payFetch only when enabled AND valid wallet key", async () => {
+  const underlying = async () => new Response("ok");
+  assert.deepEqual(readerPayment({}, underlying), {});
+  assert.deepEqual(readerPayment({ X402_READER_PAYMENTS_ENABLED: "1" }, underlying), {}, "flag without wallet stays unpaid");
+  assert.deepEqual(readerPayment({ X402_READER_PAYMENTS_ENABLED: "1", X402_READER_WALLET_KEY: "0x1234" }, underlying), {}, "invalid key stays unpaid");
+  const pay = readerPayment({ X402_READER_PAYMENTS_ENABLED: "1", X402_READER_WALLET_KEY: "0x" + "11".repeat(32) }, underlying);
+  assert.equal(pay.paymentsEnabled, true);
+  assert.equal(typeof pay.payFetch, "function");
+  const res = await pay.payFetch("https://reader.outbid.sh/scrape?url=https%3A%2F%2Fexample.com%2Ftop");
+  assert.equal(res.ok, true, "a 200 passes through the paying wrapper untouched, no payment made");
 });
 
 test("x402 descriptor empty without payTo env; quote 200 + unpaid witness 402 via mocked reader", async () => {
