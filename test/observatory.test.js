@@ -74,3 +74,31 @@ test("paid-shaped receipts append, verify with process key, and skip junk", () =
   assert.deepEqual(sky.map((x) => x.state), ["steady"]);
   assert.equal(sky[0].total, 1, "method/spec_hash drift must not group");
 });
+
+test("paid contradiction: same method, different vantage + value, both unexpired -> flare (contradicted)", () => {
+  const key = generateProcessKey();
+  const dir = mkdtempSync(path.join(os.tmpdir(), "wit-"));
+  const spec = methodFromRequest({ url: "https://example.com/pricing", extract: { starter_price: "number" }, assertion: "starter_price < 100" });
+  const observed_at = "2026-08-30T00:00:00.000Z";
+  const base = {
+    assertion: spec.assertion,
+    observed_at,
+    source_hash: "aa",
+    agreement: "1-of-1",
+    method: spec,
+    spec_hash: specHash(spec),
+    valid_until: new Date(Date.parse(observed_at) + VALID_FOR_MS).toISOString(),
+  };
+  const a = signReceipt({ ...base, value: { starter_price: 49 }, evidence: "starter_price: 49", vantage: "box" }, key);
+  const b = signReceipt({ ...base, value: { starter_price: 50 }, evidence: "starter_price: 50", vantage: "peer" }, key);
+  appendObservation(dir, a);
+  appendObservation(dir, b);
+  const loaded = readObservations(dir);
+  const sky = compareReceipts(loaded, key.publicKey, observed_at);
+  assert.equal(sky.length, 1, "same method/spec_hash groups into one card");
+  assert.equal(sky[0].active, 2, "both unexpired receipts count as active");
+  assert.equal(sky[0].state, "flare", "two vantages, disagreeing values -> flare");
+  const html = renderStarMap(sky, observed_at);
+  assert.match(html, /class="card flare"/);
+  assert.match(html, /contradicted/);
+});
