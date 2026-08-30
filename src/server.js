@@ -3,15 +3,6 @@ import { assertPublicHttps, SsrfError } from "./ssrf.js";
 import { fillExtract } from "./extract.js";
 import { loadOrCreateKeystore } from "./keystore.js";
 import { evalAssertion, pubkeyB64, signReceipt, sourceHash } from "./receipt.js";
-import {
-  appendObservation,
-  compareReceipts,
-  methodFromRequest,
-  readObservations,
-  specHash,
-  VALID_FOR_MS,
-} from "./observatory.js";
-import { renderStarMap } from "./star-map.js";
 import { paymentMiddleware } from "@x402/express";
 import { x402ResourceServer, HTTPFacilitatorClient } from "@x402/core/server";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
@@ -90,36 +81,26 @@ export async function handleWitness(body, deps = {}) {
   if (!evalAssertion(values, body.assertion)) {
     return { status: 422, json: { reason: "assertion_failed" } };
   }
-  const observed_at = (deps.now ?? (() => new Date().toISOString()))();
   const rest = {
     value: values,
     assertion: body.assertion ?? null,
-    observed_at,
+    observed_at: (deps.now ?? (() => new Date().toISOString()))(),
     source_hash: sourceHash(text),
     evidence: text.slice(0, 160),
     agreement: "1-of-1",
-    spec_hash: specHash(methodFromRequest(body, deps.retrieval ?? "scrape")),
-    valid_until: new Date(Date.parse(observed_at) + VALID_FOR_MS).toISOString(),
-    vantage: deps.vantage ?? "box",
   };
-  const json = signReceipt(rest, processKey(deps));
-  if (deps.observationsDir) appendObservation(deps.observationsDir, json);
-  return { status: 200, json };
+  return { status: 200, json: signReceipt(rest, processKey(deps)) };
 }
 
 export function createApp(deps = {}) {
   const key = processKey(deps);
-  const wired = { ...deps, key, observationsDir: deps.observationsDir ?? "data" };
+  const wired = { ...deps, key };
   const app = express();
   app.use(express.json({ limit: "64kb" }));
   const reply = (res, out) => res.status(out.status).json(out.json);
   const witness = async (req, res) =>
     reply(res, await handleWitness(req.body, { ...wired, payment: req.headers["payment-signature"] || req.headers["x-payment"] }));
   app.get("/pubkey", (_req, res) => res.json({ pubkey: pubkeyB64(key) }));
-  app.get("/observatory", (_req, res) => {
-    const now = (wired.now ?? (() => new Date().toISOString()))();
-    res.type("html").send(renderStarMap(compareReceipts(readObservations(wired.observationsDir), key.publicKey, now), now));
-  });
   app.post("/quote", async (req, res) => reply(res, await handleQuote(req.body, wired)));
   const accepts = witnessAccepts(deps.paywall);
   if (accepts.length) {

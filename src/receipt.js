@@ -1,6 +1,6 @@
 import { createHash, generateKeyPairSync, sign, verify } from "node:crypto";
 
-const CANON = ["value", "assertion", "observed_at", "source_hash", "evidence", "agreement", "spec_hash", "valid_until", "vantage"];
+const CANON = ["value", "assertion", "observed_at", "source_hash", "evidence", "agreement"];
 
 export function generateProcessKey() {
   return generateKeyPairSync("ed25519");

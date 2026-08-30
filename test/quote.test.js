@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert";
 import { assertPublicHttps, SsrfError } from "../src/ssrf.js";
+import { generateProcessKey } from "../src/receipt.js";
 import { createApp, handleQuote } from "../src/server.js";
 
 const FIXTURE = `<p>starter_price: $49/mo</p><p>currency: USD</p>`;
@@ -39,7 +40,7 @@ test("scrape 422 does not call browse", async () => {
 
 test("POST /quote SSRF does not retrieve", async () => {
   let n = 0;
-  const app = createApp({ retrieve: async () => (n++, { text: FIXTURE }) });
+  const app = createApp({ key: generateProcessKey(), retrieve: async () => (n++, { text: FIXTURE }) });
   const server = app.listen(0, "127.0.0.1");
   await new Promise((r) => server.once("listening", r));
   const res = await fetch(`http://127.0.0.1:${server.address().port}/quote`, {

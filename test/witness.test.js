@@ -1,10 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert";
-import { mkdtempSync } from "node:fs";
-import os from "node:os";
-import path from "node:path";
 import { generateProcessKey, verifyReceipt } from "../src/receipt.js";
-import { methodFromRequest, specHash } from "../src/observatory.js";
 import { createApp, handleWitness } from "../src/server.js";
 
 const FIXTURE = `<p>starter_price: $49/mo</p><p>currency: USD</p>`;
@@ -24,41 +20,6 @@ test("receipt verify with process pubkey", async () => {
   assert.equal(out.json.agreement, "1-of-1");
   assert.equal(out.json.value.starter_price, 49);
   assert.equal(out.json.assertion, "starter_price < 100");
-  assert.equal(out.json.vantage, "box");
-  assert.equal(out.json.valid_until, "2026-08-30T01:00:00.000Z");
-  assert.equal(out.json.spec_hash, specHash(methodFromRequest(BODY)));
-});
-
-test("paid card appends; /observatory reads the log, not seeds", async () => {
-  const key = generateProcessKey();
-  const dir = mkdtempSync(path.join(os.tmpdir(), "wit-"));
-  const now = () => "2026-08-30T00:00:00.000Z";
-  const out = await handleWitness(BODY, {
-    retrieve: async () => ({ text: FIXTURE }),
-    paid: true,
-    key,
-    now,
-    observationsDir: dir,
-  });
-  assert.equal(out.status, 200);
-  const miss = await handleWitness(BODY, {
-    retrieve: async () => ({ text: "<p>hi</p>" }),
-    paid: true,
-    key,
-    now,
-    observationsDir: dir,
-  });
-  assert.equal(miss.status, 422);
-  const app = createApp({ key, retrieve: async () => ({ text: FIXTURE }), observationsDir: dir, now });
-  const server = app.listen(0, "127.0.0.1");
-  await new Promise((r) => server.once("listening", r));
-  const res = await fetch(`http://127.0.0.1:${server.address().port}/observatory`);
-  assert.equal(res.status, 200);
-  const html = await res.text();
-  assert.match(html, new RegExp(out.json.spec_hash.slice(0, 16)));
-  assert.match(html, /class="card steady"/);
-  assert.doesNotMatch(html, /What price is published/);
-  await new Promise((r) => server.close(r));
 });
 
 test("POST /witness 422 when extract cannot fill — no 402", async () => {
@@ -97,6 +58,7 @@ const fakeFacilitator = {
 
 test("paywall wired: unpaid deliverable → real x402 402 challenge, both rails", async () => {
   const app = createApp({
+    key: generateProcessKey(),
     retrieve: async () => ({ text: FIXTURE }),
     facilitator: fakeFacilitator,
     paywall: { evmAddress: "0xabc0000000000000000000000000000000000001", svmAddress: "F1AbWuXJcBT9arW9wc6Xr2vom5NBtngWsz6Ht16jRBLM" },
@@ -117,6 +79,7 @@ test("paywall wired: unpaid deliverable → real x402 402 challenge, both rails"
 
 test("paywall wired: extract miss → 422, the paywall never bills", async () => {
   const app = createApp({
+    key: generateProcessKey(),
     retrieve: async () => ({ text: "<p>hi</p>" }),
     facilitator: fakeFacilitator,
     paywall: { svmAddress: "F1AbWuXJcBT9arW9wc6Xr2vom5NBtngWsz6Ht16jRBLM" },
