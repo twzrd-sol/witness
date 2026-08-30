@@ -1,7 +1,5 @@
 import { createHash, generateKeyPairSync, sign, verify } from "node:crypto";
 
-const CANON = ["value", "assertion", "observed_at", "source_hash", "evidence", "agreement"];
-
 export function generateProcessKey() {
   return generateKeyPairSync("ed25519");
 }
@@ -14,8 +12,17 @@ export function sourceHash(text) {
   return createHash("sha256").update(text).digest("hex");
 }
 
+/** Deep, order-stable canonical JSON: every nested field is signed. */
+function sortDeep(v) {
+  if (Array.isArray(v)) return v.map(sortDeep);
+  if (v && typeof v === "object") {
+    return Object.fromEntries(Object.keys(v).sort().map((k) => [k, sortDeep(v[k])]));
+  }
+  return v;
+}
+
 export function canonical(rest) {
-  return JSON.stringify(rest, CANON);
+  return JSON.stringify(sortDeep(rest));
 }
 
 export function signReceipt(rest, kp) {

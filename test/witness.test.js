@@ -93,3 +93,19 @@ test("paywall wired: extract miss → 422, the paywall never bills", async () =>
   assert.equal((await res.json()).reason, "extract_missing");
   await new Promise((r) => server.close(r));
 });
+
+test("nested-value tampering fails receipt verification", async () => {
+  const key = generateProcessKey();
+  const out = await handleWitness(BODY, {
+    retrieve: async () => ({ text: FIXTURE }),
+    paid: true,
+    key,
+    now: () => "2026-08-30T00:00:00.000Z",
+  });
+  assert.equal(out.status, 200);
+  const tampered = { ...out.json, value: { ...out.json.value, starter_price: 9999, currency: "EUR" } };
+  assert.equal(verifyReceipt(tampered, key.publicKey), false);
+  assert.ok(verifyReceipt(out.json, key.publicKey));
+  const reordered = { ...out.json, value: { currency: out.json.value.currency, starter_price: out.json.value.starter_price } };
+  assert.ok(verifyReceipt(reordered, key.publicKey), "key order must not change validity");
+});
