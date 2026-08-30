@@ -115,6 +115,9 @@ test("paywall wired: unpaid deliverable → real x402 402 challenge, both rails"
   const challenge = JSON.parse(Buffer.from(res.headers.get("payment-required"), "base64").toString("utf8"));
   assert.equal(challenge.x402Version, 2);
   assert.equal(challenge.resource.url, "https://witness.outbid.sh/witness", "402 resource is canonical https, not request-derived http://127.0.0.1");
+  assert.equal(challenge.resource.serviceName, "witness");
+  assert.deepEqual(challenge.resource.tags, ["observation", "receipt", "x402", "empiricism"]);
+  assert.ok(challenge.extensions?.bazaar, "bazaar discovery extension declared on the challenge");
   const nets = challenge.accepts.map((a) => a.network).sort();
   assert.deepEqual(nets, ["eip155:8453", "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"]);
   assert.ok(challenge.accepts.every((a) => (a.maxAmountRequired ?? a.amount) === "10000"));
@@ -187,6 +190,7 @@ test("GET /witness is crawlable discovery: 402 challenge, zero retrieve", async 
     assert.equal(challenge.x402Version, 2);
     assert.equal(challenge.resource.url, "https://witness.outbid.sh/witness");
     assert.deepEqual(challenge.accepts.map((a) => a.network).sort(), ["eip155:8453", "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"]);
+    assert.equal(challenge.resource.serviceName, "witness");
     assert.equal(calls, 0, "GET must not retrieve");
     const paid = await fetch(`http://127.0.0.1:${server.address().port}/witness`, { headers: { "x-payment": "bogus" } });
     assert.equal(paid.status, 405, "paid GET refused before any facilitator call");

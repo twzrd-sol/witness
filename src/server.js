@@ -6,6 +6,7 @@ import { evalAssertion, pubkeyB64, signReceipt, sourceHash } from "./receipt.js"
 import { appendObservation, compareReceipts, methodFromRequest, readObservations, specHash, VALID_FOR_MS } from "./observatory.js";
 import { renderStarMap } from "./star-map.js";
 import { paymentMiddleware } from "@x402/express";
+import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { x402ResourceServer, HTTPFacilitatorClient } from "@x402/core/server";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { ExactSvmScheme } from "@x402/svm/exact/server";
@@ -123,6 +124,28 @@ export function createApp(deps = {}) {
   app.post("/quote", async (req, res) => reply(res, await handleQuote(req.body, wired)));
   const accepts = witnessAccepts(deps.paywall);
   if (accepts.length) {
+    const bazaar = declareDiscoveryExtension({
+      bodyType: "json",
+      input: { url: "https://outbid.sh/top", extract: { rank: "number" }, assertion: "rank < 100", replicas: 1 },
+      inputSchema: {
+        type: "object",
+        properties: {
+          url: { type: "string" },
+          extract: { type: "object", minProperties: 1, additionalProperties: { type: "string" } },
+          assertion: { type: "string" },
+          replicas: { type: "integer", enum: [1] },
+        },
+        required: ["url", "extract"],
+      },
+      output: {
+        example: {
+          value: { rank: 1 }, assertion: "rank < 100", observed_at: "2026-08-30T00:00:00.000Z",
+          source_hash: "<sha256>", evidence: "<first 160 chars>", agreement: "1-of-1",
+          method: { url: "https://outbid.sh/top", retrieval: "scrape", extract: { rank: "number" }, assertion: "rank < 100" },
+          spec_hash: "<sha256>", valid_until: "2026-08-30T01:00:00.000Z", vantage: "box", receipt: "<ed25519>",
+        },
+      },
+    });
     const facilitator = deps.facilitator ?? new HTTPFacilitatorClient({ url: deps.facilitatorUrl || "https://facilitator.payai.network" });
     const rs = new x402ResourceServer(facilitator);
     if (deps.paywall.evmAddress) rs.register(EVM_NET, new ExactEvmScheme());
@@ -135,14 +158,15 @@ export function createApp(deps = {}) {
       if (out.status === 200) return next();
       return reply(res, out);
     };
-    app.post("/witness", deliverable, paymentMiddleware({ "POST /witness": { resource: resourceUrl, accepts, mimeType: "application/json", description: "Independent fact + signed receipt. $0.01 USDC." } }, rs), witness);
+    const witnessMeta = { serviceName: "witness", tags: ["observation", "receipt", "x402", "empiricism"] };
+    app.post("/witness", deliverable, paymentMiddleware({ "POST /witness": { resource: resourceUrl, accepts, mimeType: "application/json", description: "Independent fact + signed receipt. $0.01 USDC.", ...witnessMeta, extensions: bazaar } }, rs), witness);
     // Crawlable discovery: GET answers the same 402 challenge with zero retrieve.
     app.get("/witness", (req, res, next) => {
       if (req.headers["payment-signature"] || req.headers["x-payment"]) {
         return res.status(405).json({ reason: "get_discovery_only_use_post" });
       }
       next();
-    }, paymentMiddleware({ "GET /witness": { resource: resourceUrl, accepts, mimeType: "application/json", description: "Discovery challenge — the paid deliverable is POST /witness." } }, rs));
+    }, paymentMiddleware({ "GET /witness": { resource: resourceUrl, accepts, mimeType: "application/json", description: "Discovery challenge — the paid deliverable is POST /witness.", ...witnessMeta } }, rs));
   } else {
     app.post("/witness", witness);
   }
