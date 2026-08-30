@@ -78,6 +78,7 @@ export function openapiDoc(env = process.env) {
           },
         },
       },
+      "/openapi.json": pub("This contract — machine-readable", out("This OpenAPI 3.1 document, served at this path.", { type: "object" })),
       "/pubkey": pub("Signing key — verify receipts", out("ed25519 public key (base64 SPKI)", {
         type: "object",
         required: ["pubkey"],

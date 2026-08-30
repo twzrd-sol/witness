@@ -46,7 +46,7 @@ test("GET /openapi.json serves the doc on the host surface", async () => {
     assert.equal(res.status, 200);
     const served = await res.json();
     assert.equal(served.servers[0].url, "https://witness.outbid.sh", "canonical origin even without env");
-    assert.deepEqual(Object.keys(served.paths).sort(), ["/.well-known/agent.json", "/.well-known/x402", "/llms.txt", "/observatory", "/pubkey", "/quote", "/skill.md", "/witness"]);
+    assert.deepEqual(Object.keys(served.paths).sort(), ["/.well-known/agent.json", "/.well-known/x402", "/llms.txt", "/observatory", "/openapi.json", "/pubkey", "/quote", "/skill.md", "/witness"]);
   } finally {
     await new Promise((r) => server.close(r));
   }
@@ -54,7 +54,7 @@ test("GET /openapi.json serves the doc on the host surface", async () => {
 
 test("GET discovery paths documented public (security: []) — no GET /quote or /witness", () => {
   const doc = openapiDoc({});
-  for (const p of ["/pubkey", "/.well-known/x402", "/observatory", "/llms.txt", "/skill.md", "/.well-known/agent.json"]) {
+  for (const p of ["/openapi.json", "/pubkey", "/.well-known/x402", "/observatory", "/llms.txt", "/skill.md", "/.well-known/agent.json"]) {
     const g = doc.paths[p].get;
     assert.ok(g, `${p} has a GET entry`);
     assert.deepEqual(g.security, [], `${p} is explicitly public`);
