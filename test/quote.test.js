@@ -7,10 +7,11 @@ const FIXTURE = `<p>starter_price: $49/mo</p><p>currency: USD</p>`;
 const EXTRACT = { starter_price: "number", currency: "string" };
 const BODY = { url: "https://example.com/pricing", extract: EXTRACT };
 
-test("SSRF refuse http://127.0.0.1/", () => {
+test("SSRF refuse http://127.0.0.1/", async () => {
   for (const bad of ["http://127.0.0.1/", "https://127.0.0.1/x", "file:///etc/passwd"]) {
-    assert.throws(() => assertPublicHttps(bad), SsrfError);
+    await assert.rejects(() => assertPublicHttps(bad), SsrfError);
   }
+  await assert.rejects(() => assertPublicHttps("https://witness-dns-refuse.invalid/"), SsrfError);
 });
 
 test("quote 422 when extract keys missing from fixture html", async () => {

@@ -1,9 +1,9 @@
 import http from "node:http";
 import { assertPublicHttps, SsrfError } from "./ssrf.js";
 import { fillExtract } from "./extract.js";
+import { loadOrCreateKeystore } from "./keystore.js";
 import {
   evalAssertion,
-  generateProcessKey,
   pubkeyB64,
   signReceipt,
   sourceHash,
@@ -13,7 +13,7 @@ export const PRICE_USDC = "0.01";
 const AMOUNT_ATOMIC = "10000"; // 0.01 USDC, 6 decimals
 
 function processKey(deps) {
-  return deps.key ?? generateProcessKey();
+  return deps.key ?? loadOrCreateKeystore(deps.keystoreDir);
 }
 
 export async function handleQuote(body, { retrieve } = {}) {
@@ -24,7 +24,7 @@ export async function handleQuote(body, { retrieve } = {}) {
   if (replicas !== undefined && replicas !== 1)
     return { status: 422, json: { reason: "replicas_unsupported" } };
   try {
-    assertPublicHttps(url);
+    await assertPublicHttps(url);
   } catch (e) {
     if (!(e instanceof SsrfError)) throw e;
     return { status: 422, json: { reason: e.message } };
