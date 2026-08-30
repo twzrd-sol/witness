@@ -44,7 +44,7 @@ test("default documented method extract is rank-only (llms.txt METHOD_DOC)", asy
     const method = JSON.parse(block[1]);
     assert.equal(method.url, "https://outbid.sh/top");
     assert.equal(method.retrieval, "scrape");
-    assert.equal(method.assertion, "rank == 1");
+    assert.equal(method.assertion, "rank < 100");
     assert.deepEqual(method.extract, { rank: "number" }, "extract is rank-only — no bid_usdc/url required keys");
   });
 });

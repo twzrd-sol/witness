@@ -12,7 +12,7 @@ const METHOD_DOC = JSON.stringify({
   url: "https://outbid.sh/top",
   retrieval: "scrape",
   extract: { rank: "number" },
-  assertion: "rank == 1",
+  assertion: "rank < 100",
 }, null, 2);
 
 const ROBOTS = `User-agent: *
@@ -35,6 +35,7 @@ const LLMS = `# witness
 - GET /pubkey — the ed25519 signing key (receipts are signed over deep canonical JSON, 1h validity).
 - GET /observatory — every verified receipt, rendered; contradictions and expiry are visible.
 - GET /.well-known/x402 — payment descriptor for POST /witness.
+- GET /openapi.json — machine-readable OpenAPI 3.1 contract for POST /quote and POST /witness.
 
 Default documented method — observe https://outbid.sh/top:
 
