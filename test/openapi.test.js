@@ -20,6 +20,8 @@ test("openapi contract: quote free, witness quote-first paid x402, canonical ori
   assert.equal(wreq.schema.properties.retrieval.type, "string");
   assert.equal(wreq.schema.properties.assertion.type, "string");
   assert.deepEqual(wreq.example, { url: "https://outbid.sh/top", extract: { rank: "number" }, retrieval: "scrape", assertion: "rank < 100", replicas: 1 }, "witness example: outbid.sh/top rank method");
+  assert.equal(wreq.schema.properties.url.example, "https://outbid.sh/top", "url property example — sampler composes a real probe, not placehold.co");
+  assert.deepEqual(wreq.schema.properties.extract.example, { rank: "number" }, "extract property example");
   assert.deepEqual(doc.paths["/quote"].post.requestBody.content["application/json"].example, wreq.example, "quote carries the same example");
   assert.deepEqual(w["x-payment-info"].protocols, [{ x402: {} }]);
   assert.deepEqual(w["x-payment-info"].price, { mode: "fixed", currency: "USD", amount: "0.010000" });
