@@ -47,6 +47,7 @@ export function openapiDoc(env = process.env) {
         post: {
           summary: "Free deliverability probe",
           description: "200 means the observation can be performed now; 422 means it cannot (ssrf refusal, retrieve failure, empty page, or extract fields missing). Never bills.",
+          security: [],
           requestBody: body(quoteRequest),
           responses: {
             "200": out("Deliverable now", { type: "object", properties: { price_usdc: { const: "0.01" }, replicas: { type: "integer" }, can_deliver: { const: true } } }),
