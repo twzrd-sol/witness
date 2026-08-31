@@ -42,6 +42,7 @@ test("comparator derives the five star states mechanically", () => {
   const html = renderStarMap(compareResults(SEED_SPECS, cards, "2026-08-30T08:00:00.000Z"), "2026-08-30T08:00:00.000Z");
   assert.match(html, /The Observatory/);
   for (const state of states) assert.match(html, new RegExp(`class="card ${state}"`));
+  assert.ok(cards.every((c) => html.includes(c.spec_hash)), "HTML carries the full spec_hash, not a 16-char truncation");
 });
 
 test("paid-shaped receipts append, verify with process key, and skip junk", () => {

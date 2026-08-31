@@ -7,7 +7,7 @@ export function renderStarMap(cards, now) {
       <div class="star" aria-hidden="true"><i></i><i></i><i></i></div>
       <div><span class="state">${escape(LABELS[card.state])}</span>
       <h2>${escape(card.question)}</h2>
-      <code>${escape(card.spec_hash.slice(0, 16))}</code>
+      <code>${escape(card.spec_hash)}</code>
       <p>${card.active} current · ${card.total} recorded</p></div>
     </article>`).join("");
   return `<!doctype html>
