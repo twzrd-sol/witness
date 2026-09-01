@@ -8,8 +8,9 @@ function findValue(text, key, type) {
     const n = Number(m[1].replace(/[$€£,]/g, ""));
     return Number.isFinite(n) ? n : null;
   }
-  const m = text.match(new RegExp(`${k}\\s*[:=]\\s*"?([^"\\s<]{1,64})`, "i"));
-  return m ? m[1].trim() : null;
+  const m = text.match(new RegExp(`"?${k}"?\\s*[:=]\\s*(?:"([^"\\n]{1,128})"|([^"\\s<]{1,64}))`, "i"));
+  if (!m) return null;
+  return (m[1] ?? m[2]).trim();
 }
 
 export function fillExtract(text, extract) {
