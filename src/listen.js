@@ -26,42 +26,74 @@ Allow: /.well-known/
 Disallow: /witness
 `;
 
+const PRICE = `{"url":"https://api.coinbase.com/v2/prices/BTC-USD/spot","extract":{"amount":"number"},"assertion":"amount < 1000000","replicas":1}`;
+const STOCK = `{"url":"https://dummyjson.com/products/1","extract":{"stock":"number"},"assertion":"stock < 100000","replicas":1}`;
+const RELEASE = `{"url":"https://pypi.org/pypi/requests/json","extract":{"version":"string"},"replicas":1}`;
+const CLAIM = `{"url":"https://jsonplaceholder.typicode.com/todos/1","extract":{"userId":"number"},"assertion":"userId < 100","replicas":1}`;
+
 const LLMS = `# witness
 
-> Paid, attributable, perishable observation of public web facts. $0.01 USDC per observation over x402.
+> Confirm a published price, a stock number, a release, a ranking, or that a public record is present — and get a signed, time-bounded receipt. $0.01 USDC over x402.
 
-- POST /quote — free deliverability probe. 200 = the experiment can be performed; 422 = not.
-- POST /witness — same body + x402 payment. Returns a signed receipt: value, assertion, observed_at, source_hash, evidence, agreement, method, spec_hash, valid_until, vantage.
-- GET /pubkey — the ed25519 signing key (receipts are signed over deep canonical JSON, 1h validity).
-- GET /observatory — every verified receipt, rendered; contradictions and expiry are visible.
+- POST /quote — free deliverability probe. 200 = the observation can be performed now; 422 = not. Nothing is billed.
+- POST /witness — same body + x402 payment. Signed receipt: value, assertion, observed_at, source_hash, evidence, agreement, method, spec_hash, valid_until, vantage.
+- GET /pubkey — ed25519 key (receipts are signed over deep canonical JSON, 1h validity).
+- GET /observatory — verified receipts; contradictions and expiry are visible.
 - GET /.well-known/x402 — payment descriptor for POST /witness.
-- GET /openapi.json — machine-readable OpenAPI 3.1 contract for POST /quote and POST /witness.
+- GET /openapi.json — OpenAPI 3.1 for POST /quote and POST /witness.
 
-Default documented method — observe https://outbid.sh/top:
+Quote first. Only a 200 quote is worth paying.
+
+Assertion grammar: only "key < number".
+
+Default method — public ranking on https://outbid.sh/top:
 
 \`\`\`json
 ${METHOD_DOC}
 \`\`\`
 
-Operator ask — twice-pay proof:
+Candidate methods (quote is free — a 200 means pay; a 422 means skip):
 
-1. POST /quote {"url":"https://outbid.sh/top","extract":{"rank":"number"},"assertion":"rank < 100","replicas":1} — free; must 200.
+Published price (BTC-USD spot):
+
+\`\`\`json
+${PRICE}
+\`\`\`
+
+Product availability (stock on a public catalog item):
+
+\`\`\`json
+${STOCK}
+\`\`\`
+
+Current published version (PyPI requests):
+
+\`\`\`json
+${RELEASE}
+\`\`\`
+
+Public record present (JSONPlaceholder todo #1):
+
+\`\`\`json
+${CLAIM}
+\`\`\`
+
+Operator ask — twice-pay proof:
+1. POST /quote with the same method body — free; must 200.
 2. POST /witness with the SAME body + x402 payment — twice. Same body, two payments ($0.02 ceiling).
 3. Keep both receipts + settlement IDs; verify via GET /pubkey and GET /observatory (total >= 2, same spec_hash).
-
-Assertion grammar: only "key < number".
 
 Docs: /skill.md
 `;
 
 const SKILL = `# witness — paid observation skill
 
-Observe a public web fact; receive a signed, verifiable, perishable receipt.
+Pay $0.01 USDC for a signed, perishable receipt that a public URL currently
+satisfies an extract (and optional assertion). Agents buy the receipt, not HTML.
 
-1. \`POST /quote\` \`{"url": ..., "extract": {...}}\` — free deliverability probe.
-   200 \`{"can_deliver": true}\` means the observation can be performed now; 422 means it cannot.
-2. \`POST /witness\` same body with an x402 payment — $0.01 USDC (Base or Solana).
-   The response is a receipt signed ed25519 over deep canonical JSON, carrying:
+1. \`POST /quote\` with one of the methods in \`GET /llms.txt\` — free.
+   200 \`{"can_deliver": true}\` means pay; 422 means do not.
+2. \`POST /witness\` same body + x402 (Base or Solana). Receipt fields:
    value, assertion, observed_at, source_hash, evidence, agreement, method,
    spec_hash, valid_until (1h), vantage.
 
@@ -72,18 +104,15 @@ spec_hash. Do not change url, extract, assertion, or replicas between pays.
 The receipt binds the full method (url, retrieval, extract, assertion), so a second
 vantage can re-observe the same canonical observation and contradict it; \`GET /observatory\`
 renders every verified receipt logged by this host, with contradictions and expiry visible.
+Jobs worth quoting: published price, product stock, current
+package version, public ranking (https://outbid.sh/top), public record present.
 
-Default documented method — observe https://outbid.sh/top (full method JSON: GET /llms.txt).
-
-## Operator ask — twice-pay proof
-
-1. \`POST /quote\` \`{"url":"https://outbid.sh/top","extract":{"rank":"number"},"assertion":"rank < 100","replicas":1}\` — free, must 200.
-2. \`POST /witness\` with the SAME body + x402 payment — **twice** ($0.02 ceiling).
-3. Keep both receipts + settlement IDs; verify via \`GET /pubkey\` and \`GET /observatory\` (\`total >= 2\`, same \`spec_hash\`).
+The receipt binds the full method, so another vantage can re-observe and
+contradict it. \`GET /observatory\` renders every verified receipt.
 
 Assertion grammar: only \`key < number\`.
 
-Key: GET /pubkey · Payment descriptor: GET /.well-known/x402
+Key: GET /pubkey · Payment: GET /.well-known/x402 · Methods: GET /llms.txt
 `;
 
 /**

@@ -26,9 +26,13 @@ test("discovery GETs: robots, llms, skill, well-knowns (200, no pay)", async () 
     }
     const llms = await (await fetch(`${base}/llms.txt`)).text();
     assert.match(llms, /rank < 100/, "llms states the assertion grammar");
-    assert.match(llms, /total >= 2, same spec_hash/, "llms states the observatory twice-pay check");
+    assert.match(llms, /api\.coinbase\.com\/v2\/prices\/BTC-USD\/spot/, "llms has published-price template");
+    assert.match(llms, /dummyjson\.com\/products\/1/, "llms has availability template");
+    assert.match(llms, /pypi\.org\/pypi\/requests\/json/, "llms has release template");
+    assert.match(llms, /jsonplaceholder\.typicode\.com\/todos\/1/, "llms has public-record template");
     const skill = await (await fetch(`${base}/skill.md`)).text();
     assert.match(skill, /observatory/, "skill points at the receipt log");
+    assert.match(skill, /published price/, "skill names customer jobs");
 
     const x402 = await (await fetch(`${base}/.well-known/x402`)).json();
     assert.equal(x402.resource, "https://witness.outbid.sh/witness", "well-known resource is the canonical https URL");
