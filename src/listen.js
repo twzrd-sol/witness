@@ -49,7 +49,7 @@ Operator ask — twice-pay proof:
 2. POST /witness with the SAME body + x402 payment — twice. Same body, two payments ($0.02 ceiling).
 3. Keep both receipts + settlement IDs; verify via GET /pubkey and GET /observatory (total >= 2, same spec_hash).
 
-Assertion grammar: only "key < number".
+Assertion grammar: "<key> <op> <literal>" — numeric ==, <, <=, >, >=; string == with quoted literals; "<key> exists".
 
 Docs: /skill.md
 `;
@@ -81,7 +81,7 @@ Default documented method — observe https://outbid.sh/top (full method JSON: G
 2. \`POST /witness\` with the SAME body + x402 payment — **twice** ($0.02 ceiling).
 3. Keep both receipts + settlement IDs; verify via \`GET /pubkey\` and \`GET /observatory\` (\`total >= 2\`, same \`spec_hash\`).
 
-Assertion grammar: only \`key < number\`.
+Assertion grammar: \`"<key> <op> <literal>"\` — numeric ==, <, <=, >, >=; string == with quoted literals; \`"<key> exists"\`.
 
 Key: GET /pubkey · Payment descriptor: GET /.well-known/x402
 `;
