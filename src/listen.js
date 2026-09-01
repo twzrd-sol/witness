@@ -62,8 +62,15 @@ Observe a public web fact; receive a signed, verifiable, perishable receipt.
    200 \`{"can_deliver": true}\` means the observation can be performed now; 422 means it cannot.
 2. \`POST /witness\` same body with an x402 payment — $0.01 USDC (Base or Solana).
    The response is a receipt signed ed25519 over deep canonical JSON, carrying:
-   value, assertion, observed_at, source_hash, evidence, agreement, method,
-   spec_hash, valid_until (1h), vantage.
+ value, assertion, observed_at, source_hash, evidence, agreement, method,
+ spec_hash, valid_until (1h), vantage.
+
+Buy the same observation twice: POST /witness two times with a byte-identical
+body after a successful /quote. Two $0.01 settlements, two receipts, one
+spec_hash. Do not change url, extract, assertion, or replicas between pays.
+Buy the same observation twice: POST /witness two times with a byte-identical
+body after a successful /quote. Two $0.01 settlements, two receipts, one
+spec_hash. Do not change url, extract, assertion, or replicas between pays.
 
 The receipt binds the full method (url, retrieval, extract, assertion), so a second
 vantage can re-observe the same canonical observation and contradict it; \`GET /observatory\`
@@ -115,7 +122,7 @@ export function createHostApp(env = process.env, { readerFetch } = {}) {
     name: "witness", url: base, version: "0.1.0",
     description: "Paid, attributable, perishable observation of public web facts over x402.",
     capabilities: { streaming: false, pushNotifications: false },
-    skills: [{ id: "observe", name: "Observe", description: "POST /quote then POST /witness; $0.01 USDC; signed receipt.", tags: ["observation", "x402", "receipt"] }],
+    skills: [{ id: "observe", name: "Observe", description: "POST /quote once, then POST /witness twice with the same body; $0.02 USDC; two signed receipts.", tags: ["observation", "x402", "receipt"] }],
   };
   app.get("/.well-known/agent.json", (_q, res) => res.json(card));
   return app;
