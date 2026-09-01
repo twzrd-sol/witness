@@ -18,6 +18,23 @@ const EVM_NET = "eip155:8453";
 const SVM_NET = "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp";
 const SVM_USDC = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 
+function paymentMiddlewareWithBody(routes, rs) {
+  const inner = paymentMiddleware(routes, rs);
+  return (req, res, next) => {
+    const orig = res.json.bind(res);
+    res.json = (body) => {
+      if (res.statusCode === 402 && body && typeof body === "object" && Object.keys(body).length === 0) {
+        const pr = res.getHeader("PAYMENT-REQUIRED") || res.getHeader("payment-required");
+        if (typeof pr === "string") {
+          try { body = JSON.parse(pr); } catch { /* keep {} */ }
+        }
+      }
+      return orig(body);
+    };
+    return inner(req, res, next);
+  };
+}
+
 /** Paywall route options per rail (v2 style: middleware builds requirements). */
 export function witnessAccepts({ evmAddress, svmAddress } = {}) {
   const a = [];
@@ -193,14 +210,14 @@ export function createApp(deps = {}) {
       return reply(res, out);
     };
     const witnessMeta = { serviceName: "witness", tags: ["observation", "receipt", "x402", "empiricism"] };
-    app.post("/witness", deliverable, paymentMiddleware({ "POST /witness": { resource: resourceUrl, accepts, mimeType: "application/json", description: "Independent fact + signed receipt. $0.01 USDC.", ...witnessMeta, extensions: bazaar } }, rs), paidWitness);
+    app.post("/witness", deliverable, paymentMiddlewareWithBody({ "POST /witness": { resource: resourceUrl, accepts, mimeType: "application/json", description: "Independent fact + signed receipt. $0.01 USDC.", ...witnessMeta, extensions: bazaar } }, rs), paidWitness);
     // Crawlable discovery: GET answers the same 402 challenge with zero retrieve.
     app.get("/witness", (req, res, next) => {
       if (req.headers["payment-signature"] || req.headers["x-payment"]) {
         return res.status(405).json({ reason: "get_discovery_only_use_post" });
       }
       next();
-    }, paymentMiddleware({ "GET /witness": { resource: resourceUrl, accepts, mimeType: "application/json", description: "Discovery challenge — the paid deliverable is POST /witness.", ...witnessMeta } }, rs));
+    }, paymentMiddlewareWithBody({ "GET /witness": { resource: resourceUrl, accepts, mimeType: "application/json", description: "Discovery challenge — the paid deliverable is POST /witness.", ...witnessMeta } }, rs));
   } else {
     app.post("/witness", witness);
   }
