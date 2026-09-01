@@ -56,11 +56,11 @@ export async function handleQuote(body, { retrieve } = {}) {
   return { status: 200, json: { price_usdc: PRICE_USDC, replicas: replicas || 1, can_deliver: true }, text };
 }
 
-/** Unpaid without paywall → inline 402. Payment settled upstream (or deps.paid) → sign. */
+/** Unpaid without deps.paid → 402. Signing only after explicit paid (x402 middleware or test). */
 export async function handleWitness(body, deps = {}) {
   const q = await handleQuote(body, deps);
   if (q.status !== 200) return q;
-  if (!deps.paid && !deps.payment) {
+  if (!deps.paid) {
     return {
       status: 402,
       json: {
@@ -114,8 +114,8 @@ export function createApp(deps = {}) {
   const app = express();
   app.use(express.json({ limit: "64kb" }));
   const reply = (res, out) => res.status(out.status).json(out.json);
-  const witness = async (req, res) =>
-    reply(res, await handleWitness(req.body, { ...wired, payment: req.headers["payment-signature"] || req.headers["x-payment"] }));
+  const witness = async (req, res) => reply(res, await handleWitness(req.body, { ...wired, paid: false }));
+  const paidWitness = async (req, res) => reply(res, await handleWitness(req.body, { ...wired, paid: true }));
   app.get("/pubkey", (_req, res) => res.json({ pubkey: pubkeyB64(key) }));
   app.get("/observatory", (_req, res) => {
     const now = (wired.now ?? (() => new Date().toISOString()))();
@@ -159,7 +159,7 @@ export function createApp(deps = {}) {
       return reply(res, out);
     };
     const witnessMeta = { serviceName: "witness", tags: ["observation", "receipt", "x402", "empiricism"] };
-    app.post("/witness", deliverable, paymentMiddleware({ "POST /witness": { resource: resourceUrl, accepts, mimeType: "application/json", description: "Independent fact + signed receipt. $0.01 USDC.", ...witnessMeta, extensions: bazaar } }, rs), witness);
+    app.post("/witness", deliverable, paymentMiddleware({ "POST /witness": { resource: resourceUrl, accepts, mimeType: "application/json", description: "Independent fact + signed receipt. $0.01 USDC.", ...witnessMeta, extensions: bazaar } }, rs), paidWitness);
     // Crawlable discovery: GET answers the same 402 challenge with zero retrieve.
     app.get("/witness", (req, res, next) => {
       if (req.headers["payment-signature"] || req.headers["x-payment"]) {

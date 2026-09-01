@@ -214,3 +214,68 @@ test("nested-value tampering fails receipt verification", async () => {
   const reordered = { ...out.json, value: { currency: out.json.value.currency, starter_price: out.json.value.starter_price } };
   assert.ok(verifyReceipt(reordered, key.publicKey), "key order must not change validity");
 });
+
+async function postWitness(app, headers = {}) {
+  const server = app.listen(0, "127.0.0.1");
+  await new Promise((r) => server.once("listening", r));
+  try {
+    return await fetch(`http://127.0.0.1:${server.address().port}/witness`, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...headers },
+      body: JSON.stringify(BODY),
+    });
+  } finally {
+    await new Promise((r) => server.close(r));
+  }
+}
+
+test("no paywall: forged x-payment must not mint a receipt or append", async () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "wit-"));
+  const app = createApp({
+    key: generateProcessKey(),
+    retrieve: async () => ({ text: FIXTURE }),
+    observationsDir: dir,
+  });
+  const res = await postWitness(app, { "x-payment": "forged" });
+  assert.notEqual(res.status, 200);
+  assert.ok(res.status === 503 || res.status === 402 || res.status === 422);
+  assert.equal(readObservations(dir).length, 0);
+});
+
+test("no paywall: forged payment-signature must not mint a receipt or append", async () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "wit-"));
+  const app = createApp({
+    key: generateProcessKey(),
+    retrieve: async () => ({ text: FIXTURE }),
+    observationsDir: dir,
+  });
+  const res = await postWitness(app, { "payment-signature": "forged" });
+  assert.notEqual(res.status, 200);
+  assert.ok(res.status === 503 || res.status === 402 || res.status === 422);
+  assert.equal(readObservations(dir).length, 0);
+});
+
+test("paywall wired: unpaid deliverable still returns the x402 402 challenge", async () => {
+  const app = createApp({
+    key: generateProcessKey(),
+    retrieve: async () => ({ text: FIXTURE }),
+    facilitator: fakeFacilitator,
+    paywall: { evmAddress: "0xabc0000000000000000000000000000000000001", svmAddress: "F1AbWuXJcBT9arW9wc6Xr2vom5NBtngWsz6Ht16jRBLM" },
+  });
+  const res = await postWitness(app);
+  assert.equal(res.status, 402);
+  const challenge = JSON.parse(Buffer.from(res.headers.get("payment-required"), "base64").toString("utf8"));
+  assert.equal(challenge.x402Version, 2);
+  assert.deepEqual(challenge.accepts.map((a) => a.network).sort(), ["eip155:8453", "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"]);
+});
+
+test("explicit deps.paid (not an HTTP header) still signs a verifiable receipt", async () => {
+  const key = generateProcessKey();
+  const out = await handleWitness(BODY, {
+    retrieve: async () => ({ text: FIXTURE }),
+    paid: true,
+    key,
+  });
+  assert.equal(out.status, 200);
+  assert.ok(verifyReceipt(out.json, key.publicKey));
+});
