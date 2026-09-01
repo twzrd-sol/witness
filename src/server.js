@@ -170,6 +170,12 @@ export function createApp(deps = {}) {
   } else {
     app.post("/witness", witness);
   }
+  app.use((err, _req, res, next) => {
+    if (err && (err.type === "entity.parse.failed" || (err instanceof SyntaxError && err.status === 400 && "body" in err))) {
+      return res.status(400).json({ reason: "bad_json" });
+    }
+    next(err);
+  });
   app.use((err, _req, res, _next) => {
     console.error("witness:", err && (err.stack || err.message || err));
     res.status(500).json({ reason: "internal_error" });

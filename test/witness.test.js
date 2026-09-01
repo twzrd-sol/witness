@@ -199,6 +199,23 @@ test("GET /witness is crawlable discovery: 402 challenge, zero retrieve", async 
   }
 });
 
+test("malformed JSON body -> 400 bad_json, never 500", async () => {
+  const app = createApp({ key: generateProcessKey(), retrieve: async () => ({ text: FIXTURE }) });
+  const server = app.listen(0, "127.0.0.1");
+  await new Promise((r) => server.once("listening", r));
+  try {
+    for (const path of ["/witness", "/quote"]) {
+      const res = await fetch(`http://127.0.0.1:${server.address().port}${path}`, {
+        method: "POST", headers: { "content-type": "application/json" }, body: "{not json",
+      });
+      assert.equal(res.status, 400, `${path} parse failure is a 400`);
+      assert.equal((await res.json()).reason, "bad_json");
+    }
+  } finally {
+    await new Promise((r) => server.close(r));
+  }
+});
+
 test("nested-value tampering fails receipt verification", async () => {
   const key = generateProcessKey();
   const out = await handleWitness(BODY, {
