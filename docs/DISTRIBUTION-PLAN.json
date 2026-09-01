@@ -18,6 +18,12 @@
     "repeat_observation",
     "downstream_action"
   ],
+  "channels": [
+    { "name": "Coinbase Bazaar discovery docs", "url": "https://docs.cdp.coinbase.com/agentic-wallet/mcp/mcp-tools/list-bazaar-resources", "action": "Ensure Bazaar metadata is truthful and measure referrals." },
+    { "name": "the402.ai agents page", "url": "https://the402.ai/agents/", "action": "Observe agent discovery; no unsolicited posting." },
+    { "name": "x402.jobs", "url": "https://www.x402.jobs/", "action": "Evaluate listing/referral path before submission." },
+    { "name": "agent402.tools marketplace", "url": "https://agent402.tools/marketplace", "action": "Inspect indexing and traffic; do not claim demand from presence." }
+  ],
   "experiments": [
     { "id": "design-partners", "sample": 10, "instruction": "Give each agent one job card; ask it to quote first and pay only after a deliverable response." },
     { "id": "repeat-proof", "sample": 3, "instruction": "Invite prior users to run the same method again without reimbursement." },
@@ -33,7 +39,8 @@
     "No mass unsolicited GitHub campaign.",
     "No fabricated demand, testimonials, or directory claims.",
     "Never pay before a 200 quote; never log wallet, IP, URL, evidence, or payment headers.",
-    "Do not add a marketplace, token, dashboard, or staking mechanic for this experiment."
+    "Do not add a marketplace, token, dashboard, or staking mechanic for this experiment.",
+    "Indexing or listing presence on any channel is not demand proof; only independently controlled payments count."
   ],
   "next_action": "Recruit ten named design partners from existing agent and x402 relationships, one concrete job per partner, and record only funnel outcomes."
 }
