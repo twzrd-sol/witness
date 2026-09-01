@@ -2,7 +2,7 @@ import express from "express";
 import { assertPublicHttps, SsrfError } from "./ssrf.js";
 import { fillExtract } from "./extract.js";
 import { loadOrCreateKeystore } from "./keystore.js";
-import { evalAssertion, pubkeyB64, signReceipt, sourceHash } from "./receipt.js";
+import { evalAssertion, pubkeyB64, signReceipt, sourceHash, verifyReceipt } from "./receipt.js";
 import { appendObservation, compareReceipts, methodFromRequest, readObservations, specHash, VALID_FOR_MS } from "./observatory.js";
 import { renderStarMap } from "./star-map.js";
 import { funnelOutcome, funnelSpecHash, recordFunnel } from "./funnel.js";
@@ -52,13 +52,33 @@ function processKey(deps) {
   return deps.key ?? loadOrCreateKeystore(deps.keystoreDir);
 }
 
-export async function handleQuote(body, { retrieve } = {}) {
+/** Change Proof: fail-closed prior validation before any retrieve. Returns a reason string or null. */
+function checkPrior(prior, publicKey, method) {
+  if (!prior || typeof prior !== "object" || Array.isArray(prior)) return "prior_invalid";
+  if (typeof prior.receipt !== "string") return "prior_invalid";
+  let ok = false;
+  try { ok = verifyReceipt(prior, publicKey); } catch { ok = false; }
+  if (!ok) return "prior_invalid";
+  if (typeof prior.source_hash !== "string") return "prior_invalid";
+  if (!prior.method || typeof prior.method !== "object" || Array.isArray(prior.method)) return "prior_invalid";
+  if (specHash(method) !== prior.spec_hash || specHash(prior.method) !== prior.spec_hash) return "prior_method_mismatch";
+  return null;
+}
+
+export async function handleQuote(body, { retrieve, key, retrieval } = {}) {
   if (!body || typeof body !== "object") return { status: 400, json: { reason: "bad_json" } };
   const { url, extract, replicas } = body;
   if (!extract || typeof extract !== "object" || !Object.keys(extract).length)
     return { status: 400, json: { reason: "bad_extract" } };
   if (replicas !== undefined && replicas !== 1)
     return { status: 422, json: { reason: "replicas_unsupported" } };
+  const prior = body.prior_receipt;
+  let priorInfo = null;
+  if (prior !== undefined) {
+    const bad = checkPrior(prior, key?.publicKey, methodFromRequest(body, retrieval ?? "scrape"));
+    if (bad) return { status: 422, json: { reason: bad } };
+    priorInfo = prior;
+  }
   try {
     await assertPublicHttps(url);
   } catch (e) {
@@ -77,6 +97,15 @@ export async function handleQuote(body, { retrieve } = {}) {
   const { values, missing } = fillExtract(text, extract);
   if (missing.length) return { status: 422, json: { reason: "extract_missing", missing } };
   if (!evalAssertion(values, body.assertion)) return { status: 422, json: { reason: "assertion_failed" } };
+  if (priorInfo) {
+    const source = sourceHash(text);
+    return {
+      status: 200,
+      json: { price_usdc: PRICE_USDC, replicas: replicas || 1, can_deliver: true, changed: source !== priorInfo.source_hash, previous_source_hash: priorInfo.source_hash, source_hash: source },
+      text,
+      prior: priorInfo,
+    };
+  }
   return { status: 200, json: { price_usdc: PRICE_USDC, replicas: replicas || 1, can_deliver: true }, text };
 }
 
@@ -125,6 +154,10 @@ export async function handleWitness(body, deps = {}) {
     valid_until: new Date(Date.parse(observed_at) + VALID_FOR_MS).toISOString(),
     vantage: deps.vantage ?? "box",
   };
+  if (q.prior) {
+    rest.changed = rest.source_hash !== q.prior.source_hash;
+    rest.previous_source_hash = q.prior.source_hash;
+  }
   const json = signReceipt(rest, processKey(deps));
   // Only paid receipts reach here (402/422 return above) — append nothing else.
   if (deps.observationsDir) appendObservation(deps.observationsDir, json);
