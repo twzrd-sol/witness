@@ -18,11 +18,16 @@ test("openapi contract: quote free, witness quote-first paid x402, canonical ori
   const wreq = w.requestBody.content["application/json"];
   assert.deepEqual(wreq.schema.required, ["url", "extract"]);
   assert.equal(wreq.schema.properties.retrieval.type, "string");
+  assert.deepEqual(wreq.schema.properties.retrieval.enum, ["scrape"], "retrieval is an enum (scrape only)");
+  assert.equal(wreq.schema.properties.retrieval.example, "scrape");
   assert.equal(wreq.schema.properties.assertion.type, "string");
+  assert.equal(wreq.schema.properties.assertion.example, "rank < 100");
   assert.deepEqual(wreq.example, { url: "https://outbid.sh/top", extract: { rank: "number" }, retrieval: "scrape", assertion: "rank < 100", replicas: 1 }, "witness example: outbid.sh/top rank method");
   assert.equal(wreq.schema.properties.url.example, "https://outbid.sh/top", "url property example — sampler composes a real probe, not placehold.co");
   assert.deepEqual(wreq.schema.properties.extract.example, { rank: "number" }, "extract property example");
-  assert.deepEqual(doc.paths["/quote"].post.requestBody.content["application/json"].example, wreq.example, "quote carries the same example");
+  const qbody = doc.paths["/quote"].post.requestBody.content["application/json"];
+  assert.deepEqual(qbody.example, wreq.example, "quote carries the same example");
+  assert.equal(qbody.schema, wreq.schema, "quote and witness share the one canonical request schema");
   assert.deepEqual(w["x-payment-info"].protocols, [{ x402: {} }]);
   assert.deepEqual(w["x-payment-info"].price, { mode: "fixed", currency: "USD", amount: "0.010000" });
   assert.deepEqual(w["x-payment"].accepts.map((a) => a.network).sort(), ["eip155:8453", "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"]);

@@ -11,8 +11,8 @@ const quoteRequest = {
   properties: {
     url: { type: "string", format: "uri", description: "Public https URL to observe.", example: "https://outbid.sh/top" },
     extract: { type: "object", minProperties: 1, additionalProperties: { type: "string" }, description: "Field name -> expected type (number|string) the page must contain.", example: { rank: "number" } },
-    retrieval: { type: "string", description: 'Retrieval the host performs (currently "scrape"). Optional; defaults to "scrape".' },
-    assertion: { type: "string", description: 'Optional post-condition checked against extracted values, grammar "<key> <op> <literal>": numeric ==, <, <=, >, >= (e.g. "rank < 100"); string == with quoted literals (e.g. \'currency == "USD"\'); "<key> exists". Malformed or type-mismatched assertions fail (422) and nothing is billed.' },
+    retrieval: { type: "string", enum: ["scrape"], description: 'Retrieval the host performs — "scrape" is the only mode. Optional; the canonical method always records "scrape".', example: "scrape" },
+    assertion: { type: "string", description: 'Optional post-condition checked against extracted values, grammar "<key> <op> <literal>": numeric ==, <, <=, >, >= (e.g. "rank < 100"); string == with quoted literals (e.g. \'currency == "USD"\'); "<key> exists". Malformed or type-mismatched assertions fail (422) and nothing is billed.', example: "rank < 100" },
     replicas: { type: "integer", enum: [1] },
   },
 };
