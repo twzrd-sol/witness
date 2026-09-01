@@ -28,6 +28,12 @@ test("quote 200 when fixture html fills extract", async () => {
   assert.deepEqual(out.json, { price_usdc: "0.01", replicas: 1, can_deliver: true });
 });
 
+test("quote 422s assertion failures before payment", async () => {
+  const out = await handleQuote({ ...BODY, assertion: "starter_price < 10" }, { retrieve: async () => ({ text: FIXTURE }) });
+  assert.equal(out.status, 422);
+  assert.equal(out.json.reason, "assertion_failed");
+});
+
 test("scrape 422 does not call browse", async () => {
   let scrape = 0, browse = 0;
   const out = await handleQuote(BODY, {
