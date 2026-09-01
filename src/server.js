@@ -74,8 +74,9 @@ export async function handleQuote(body, { retrieve } = {}) {
     return { status: 422, json: { reason: "retrieve_failed" } };
   }
   if (!text) return { status: 422, json: { reason: "retrieve_empty" } };
-  const { missing } = fillExtract(text, extract);
+  const { values, missing } = fillExtract(text, extract);
   if (missing.length) return { status: 422, json: { reason: "extract_missing", missing } };
+  if (!evalAssertion(values, body.assertion)) return { status: 422, json: { reason: "assertion_failed" } };
   return { status: 200, json: { price_usdc: PRICE_USDC, replicas: replicas || 1, can_deliver: true }, text };
 }
 
