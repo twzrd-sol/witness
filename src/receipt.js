@@ -36,9 +36,42 @@ export function verifyReceipt(doc, publicKey) {
   return verify(null, Buffer.from(canonical(rest)), publicKey, Buffer.from(receipt, "base64"));
 }
 
+const OPS = {
+  "==": (a, b) => a === b,
+  "<": (a, b) => a < b,
+  "<=": (a, b) => a <= b,
+  ">": (a, b) => a > b,
+  ">=": (a, b) => a >= b,
+};
+
+/** Strict assertion grammar v1 (reject-by-default):
+ *  "<key> <op> <literal>" — numeric ==, <, <=, >, >= against number values;
+ *  string == against quoted literals ("x" or 'x');
+ *  "<key> exists" — any value except undefined/null.
+ *  Malformed assertions or type mismatches are false, never true. */
 export function evalAssertion(value, assertion) {
   if (!assertion) return true;
-  const m = String(assertion).match(/^([A-Za-z_][A-Za-z0-9_]*)\s*<\s*(\d+(?:\.\d+)?)$/);
-  if (!m || typeof value[m[1]] !== "number") return false;
-  return value[m[1]] < Number(m[2]);
+  const s = String(assertion).trim();
+  const exists = s.match(/^([A-Za-z_][A-Za-z0-9_]*)\s+exists$/);
+  if (exists) {
+    const v = value[exists[1]];
+    return v !== undefined && v !== null;
+  }
+  const m = s.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*(==|<=|>=|<|>)\s*(.*)$/);
+  if (!m) return false;
+  const [, key, op, raw] = m;
+  const rhs = raw.trim();
+  const v = value[key];
+  if (v === undefined || v === null) return false;
+  const num = rhs.match(/^(-?\d+(?:\.\d+)?)$/);
+  if (num) {
+    if (typeof v !== "number" || Number.isNaN(v)) return false;
+    return OPS[op](v, Number(num[1]));
+  }
+  const str = rhs.match(/^(?:"([^"]*)"|'([^']*)')$/);
+  if (str) {
+    if (op !== "==" || typeof v !== "string") return false;
+    return v === (str[1] ?? str[2]);
+  }
+  return false;
 }
