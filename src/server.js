@@ -5,6 +5,7 @@ import { loadOrCreateKeystore } from "./keystore.js";
 import { evalAssertion, pubkeyB64, signReceipt, sourceHash } from "./receipt.js";
 import { appendObservation, compareReceipts, methodFromRequest, readObservations, specHash, VALID_FOR_MS } from "./observatory.js";
 import { renderStarMap } from "./star-map.js";
+import { funnelOutcome, funnelSpecHash, recordFunnel } from "./funnel.js";
 import { paymentMiddleware } from "@x402/express";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { x402ResourceServer, HTTPFacilitatorClient } from "@x402/core/server";
@@ -113,6 +114,23 @@ export function createApp(deps = {}) {
   const resourceUrl = `${deps.publicBaseUrl || "https://witness.outbid.sh"}/witness`;
   const app = express();
   app.use(express.json({ limit: "64kb" }));
+  const funnelDir = deps.funnelDir === undefined ? wired.observationsDir : deps.funnelDir;
+  app.use((req, res, next) => {
+    if (req.method !== "POST" || (req.path !== "/quote" && req.path !== "/witness")) return next();
+    res.on("finish", () => {
+      try {
+        const spec_hash = funnelSpecHash(req.body);
+        recordFunnel(funnelDir, {
+          ts: new Date().toISOString(),
+          route: req.path,
+          status: res.statusCode,
+          outcome: funnelOutcome(req.path, res.statusCode),
+          ...(spec_hash ? { spec_hash } : {}),
+        });
+      } catch { /* funnel must never break the response path */ }
+    });
+    next();
+  });
   const reply = (res, out) => res.status(out.status).json(out.json);
   const witness = async (req, res) => reply(res, await handleWitness(req.body, { ...wired, paid: false }));
   const paidWitness = async (req, res) => reply(res, await handleWitness(req.body, { ...wired, paid: true }));
