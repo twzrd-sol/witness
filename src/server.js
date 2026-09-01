@@ -113,7 +113,6 @@ export function createApp(deps = {}) {
   const wired = { ...deps, key, observationsDir: deps.observationsDir ?? "data" };
   const resourceUrl = `${deps.publicBaseUrl || "https://witness.outbid.sh"}/witness`;
   const app = express();
-  app.use(express.json({ limit: "64kb" }));
   const funnelDir = deps.funnelDir === undefined ? wired.observationsDir : deps.funnelDir;
   app.use((req, res, next) => {
     if (req.method !== "POST" || (req.path !== "/quote" && req.path !== "/witness")) return next();
@@ -131,6 +130,7 @@ export function createApp(deps = {}) {
     });
     next();
   });
+  app.use(express.json({ limit: "64kb" }));
   const reply = (res, out) => res.status(out.status).json(out.json);
   const witness = async (req, res) => reply(res, await handleWitness(req.body, { ...wired, paid: false }));
   const paidWitness = async (req, res) => reply(res, await handleWitness(req.body, { ...wired, paid: true }));

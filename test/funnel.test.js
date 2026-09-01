@@ -72,3 +72,22 @@ test("funnel is disabled when funnelDir is explicitly null", async () => {
   }
   assert.throws(() => readFileSync(path.join(dir, "funnel.ndjson"), "utf8"), "no funnel file written");
 });
+
+test("malformed JSON POST still records a non-deliverable outcome", async () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "funnel-bad-"));
+  const app = createApp({ key: generateProcessKey(), retrieve: async () => ({ text: FIXTURE }), funnelDir: dir });
+  const server = app.listen(0, "127.0.0.1");
+  await new Promise((r) => server.once("listening", r));
+  try {
+    const res = await fetch(`http://127.0.0.1:${server.address().port}/quote`, {
+      method: "POST", headers: { "content-type": "application/json" }, body: "{not json",
+    });
+    assert.equal(res.status, 400);
+    await new Promise((r) => setTimeout(r, 20));
+    const event = readFunnel(dir)[0];
+    assert.deepEqual({ route: event.route, status: event.status, outcome: event.outcome }, { route: "/quote", status: 400, outcome: "quote_non_deliverable" });
+    assert.equal(event.spec_hash, undefined);
+  } finally {
+    await new Promise((r) => server.close(r));
+  }
+});
