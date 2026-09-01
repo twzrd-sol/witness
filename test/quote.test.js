@@ -46,7 +46,7 @@ test("scrape 422 does not call browse", async () => {
 
 test("POST /quote SSRF does not retrieve", async () => {
   let n = 0;
-  const app = createApp({ key: generateProcessKey(), retrieve: async () => (n++, { text: FIXTURE }) });
+  const app = createApp({ key: generateProcessKey(), retrieve: async () => (n++, { text: FIXTURE }), funnelDir: null });
   const server = app.listen(0, "127.0.0.1");
   await new Promise((r) => server.once("listening", r));
   const res = await fetch(`http://127.0.0.1:${server.address().port}/quote`, {
@@ -61,7 +61,7 @@ test("POST /quote SSRF does not retrieve", async () => {
 });
 
 test("POST /quote rate limits anonymous reader probes", async () => {
-  const app = createApp({ key: generateProcessKey(), quoteRateLimit: 1, retrieve: async () => ({ text: FIXTURE }) });
+  const app = createApp({ key: generateProcessKey(), quoteRateLimit: 1, retrieve: async () => ({ text: FIXTURE }), funnelDir: null });
   const server = app.listen(0, "127.0.0.1");
   await new Promise((r) => server.once("listening", r));
   const request = () => fetch(`http://127.0.0.1:${server.address().port}/quote`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(BODY) });

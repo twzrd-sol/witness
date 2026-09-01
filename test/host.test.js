@@ -1,11 +1,15 @@
 import { test } from "node:test";
 import assert from "node:assert";
+import { mkdtempSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { createHostApp, readerPayment } from "../src/listen.js";
 import { fillExtract } from "../src/extract.js";
 import { evalAssertion } from "../src/receipt.js";
 
 async function withServer(env, fn, opts = {}) {
-  const server = createHostApp(env, opts).listen(0, "127.0.0.1");
+  const dir = env.OBSERVATIONS_DIR || mkdtempSync(path.join(os.tmpdir(), "wit-host-"));
+  const server = createHostApp({ ...env, OBSERVATIONS_DIR: dir }, opts).listen(0, "127.0.0.1");
   await new Promise((r) => server.once("listening", r));
   try { return await fn(`http://127.0.0.1:${server.address().port}`); }
   finally { await new Promise((r) => server.close(r)); }

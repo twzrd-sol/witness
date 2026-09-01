@@ -79,7 +79,7 @@ test("POST /witness unpaid 402 after a deliverable quote", async () => {
 
 test("GET /pubkey", async () => {
   const key = generateProcessKey();
-  const app = createApp({ key, retrieve: async () => ({ text: FIXTURE }) });
+  const app = createApp({ key, retrieve: async () => ({ text: FIXTURE }), funnelDir: null });
   const server = app.listen(0, "127.0.0.1");
   await new Promise((r) => server.once("listening", r));
   const res = await fetch(`http://127.0.0.1:${server.address().port}/pubkey`);
@@ -103,6 +103,7 @@ test("paywall wired: unpaid deliverable → real x402 402 challenge, both rails"
   const app = createApp({
     key: generateProcessKey(),
     retrieve: async () => ({ text: FIXTURE }),
+    funnelDir: null,
     facilitator: fakeFacilitator,
     paywall: { evmAddress: "0xabc0000000000000000000000000000000000001", svmAddress: "F1AbWuXJcBT9arW9wc6Xr2vom5NBtngWsz6Ht16jRBLM" },
   });
@@ -128,6 +129,7 @@ test("paywall resource URL follows publicBaseUrl (PUBLIC_BASE_URL), never the re
   const app = createApp({
     key: generateProcessKey(),
     retrieve: async () => ({ text: FIXTURE }),
+    funnelDir: null,
     facilitator: fakeFacilitator,
     paywall: { svmAddress: "F1AbWuXJcBT9arW9wc6Xr2vom5NBtngWsz6Ht16jRBLM" },
     publicBaseUrl: "https://witness.example.net",
@@ -147,6 +149,7 @@ test("paywall wired: extract miss → 422, the paywall never bills", async () =>
   const app = createApp({
     key: generateProcessKey(),
     retrieve: async () => ({ text: "<p>hi</p>" }),
+    funnelDir: null,
     facilitator: fakeFacilitator,
     paywall: { svmAddress: "F1AbWuXJcBT9arW9wc6Xr2vom5NBtngWsz6Ht16jRBLM" },
   });
@@ -178,6 +181,7 @@ test("GET /witness is crawlable discovery: 402 challenge, zero retrieve", async 
   const app = createApp({
     key: generateProcessKey(),
     retrieve: async () => { calls++; return { text: FIXTURE }; },
+    funnelDir: null,
     facilitator: fakeFacilitator,
     paywall: { evmAddress: "0xabc0000000000000000000000000000000000001", svmAddress: "F1AbWuXJcBT9arW9wc6Xr2vom5NBtngWsz6Ht16jRBLM" },
   });
@@ -200,7 +204,7 @@ test("GET /witness is crawlable discovery: 402 challenge, zero retrieve", async 
 });
 
 test("malformed JSON body -> 400 bad_json, never 500", async () => {
-  const app = createApp({ key: generateProcessKey(), retrieve: async () => ({ text: FIXTURE }) });
+  const app = createApp({ key: generateProcessKey(), retrieve: async () => ({ text: FIXTURE }), funnelDir: null });
   const server = app.listen(0, "127.0.0.1");
   await new Promise((r) => server.once("listening", r));
   try {
@@ -276,6 +280,7 @@ test("paywall wired: unpaid deliverable still returns the x402 402 challenge", a
   const app = createApp({
     key: generateProcessKey(),
     retrieve: async () => ({ text: FIXTURE }),
+    funnelDir: null,
     facilitator: fakeFacilitator,
     paywall: { evmAddress: "0xabc0000000000000000000000000000000000001", svmAddress: "F1AbWuXJcBT9arW9wc6Xr2vom5NBtngWsz6Ht16jRBLM" },
   });
