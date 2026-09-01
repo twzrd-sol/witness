@@ -133,7 +133,7 @@ export function createHostApp(env = process.env, { readerFetch } = {}) {
   app.get("/skill.md", (_q, res) => text(res, SKILL, "text/markdown"));
   app.get("/.well-known/x402", (_q, res) => res.json({
     resource: `${base}/witness`, description: "Independent fact + signed receipt. $0.01 USDC.",
-    x402Version: 2, price_usdc: "0.01", accepts: witnessAccepts(paywall),
+    x402Version: 2, price_usdc: "0.01", accepts: witnessAccepts(paywall).map((x) => ({ ...x, amount: "10000" })),
   }));
   const card = {
     name: "witness", url: base, version: "0.1.0",
