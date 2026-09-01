@@ -35,15 +35,21 @@ test("openapi contract: quote free, witness quote-first paid x402, canonical ori
   assert.deepEqual(req.required, ["url", "extract"]);
   const receipt = w.responses["200"].content["application/json"].schema;
   for (const field of ["value", "method", "spec_hash", "valid_until", "vantage", "receipt"]) assert.ok(receipt.required.includes(field), `receipt exposes ${field}`);
-  const r402 = w.responses["402"].content["application/json"].schema;
-  assert.deepEqual(r402.properties.accepts.type, "array");
-  assert.ok(doc.info.description.includes("/observatory") && doc.info.description.includes("/llms.txt"), "agent guidance present");
+  const r402 = w.responses["402"];  assert.deepEqual(r402.content["application/json"].schema.properties.accepts.type, "array");
+  const acc = r402.content["application/json"].schema.properties.accepts.items.properties;
+  assert.ok(acc.amount, "402 accepts schema carries amount (atomic), matching the real challenge");
+  assert.equal(acc.price, undefined, "402 accepts schema no longer documents a nonexistent price field");
+  assert.equal(acc.asset.type, "string");
+  assert.ok(r402.headers["payment-required"], "402 documents the PAYMENT-REQUIRED header (challenge lives there)");
+  assert.match(r402.description, /PAYMENT-REQUIRED/, "402 description points header-first");
+  assert.deepEqual(receipt.properties.assertion.type, ["string", "null"], "receipt assertion is string|null (runtime emits null when omitted)");
   assert.ok(doc.tags?.length >= 7, "top-level tags declared");
   assert.deepEqual(doc.tags.map((t) => t.name).sort(), ["empiricism", "fact", "observation", "oracle", "rank", "receipt", "x402"]);
   assert.match(doc.info.description, /oracle/i, "description names the oracle role");
   assert.match(doc.info.description, /fact/i, "description names the fact");
   assert.deepEqual(w.tags, ["observation", "receipt", "x402"]);
   assert.deepEqual(doc.paths["/witness"].get.tags, ["observation", "receipt", "x402"]);
+  assert.ok(doc.info.description.includes("/observatory") && doc.info.description.includes("/llms.txt"), "agent guidance present");
 });
 
 test("GET /openapi.json serves the doc on the host surface", async () => {

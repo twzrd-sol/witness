@@ -19,12 +19,12 @@ const quoteRequest = {
 
 const EXAMPLE = { url: "https://outbid.sh/top", extract: { rank: "number" }, retrieval: "scrape", assertion: "rank < 100", replicas: 1 };
 
-const receiptSchema = {
+    const receiptSchema = {
   type: "object",
   required: ["value", "assertion", "observed_at", "source_hash", "evidence", "agreement", "method", "spec_hash", "valid_until", "vantage", "receipt"],
   properties: {
     value: { type: "object" },
-    assertion: { type: "string" },
+    assertion: { type: ["string", "null"], description: "Echoed post-condition; null when the request omitted it." },
     observed_at: { type: "string", format: "date-time" },
     source_hash: { type: "string", description: "sha256 of the retrieved source text." },
     evidence: { type: "string", description: "First 160 chars of the retrieved source." },
@@ -92,7 +92,28 @@ export function openapiDoc(env = process.env) {
           requestBody: body(quoteRequest, EXAMPLE),
           responses: {
             "200": out("Signed receipt", receiptSchema),
-            "402": out("x402 payment required", { type: "object", properties: { x402Version: { type: "integer" }, accepts: { type: "array", items: { type: "object", properties: { scheme: { const: "exact" }, network: { type: "string" }, price: { const: "$0.01" }, payTo: { type: "string" } } } } } }),
+            "402": {
+              description: "x402 payment required. The challenge is base64-JSON in the PAYMENT-REQUIRED response header ({x402Version:2, resource{url,...}, accepts[], extensions}); SDK clients (@x402/fetch et al) read that header — do not parse the body, which may be {}.",
+              headers: { "payment-required": { required: true, description: "Base64-encoded x402 v2 payment challenge.", schema: { type: "string" } } },
+              content: { "application/json": { schema: {
+                type: "object",
+                properties: {
+                  x402Version: { type: "integer", const: 2 },
+                  error: { type: "string" },
+                  resource: { type: "object", properties: { url: { const: `${base}/witness` }, description: { type: "string" }, mimeType: { type: "string" }, serviceName: { type: "string" }, tags: { type: "array", items: { type: "string" } } } },
+                  accepts: { type: "array", items: { type: "object", required: ["scheme", "network", "amount", "asset", "payTo"], properties: {
+                    scheme: { const: "exact" },
+                    network: { enum: ["eip155:8453", "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"] },
+                    amount: { type: "string", description: 'Atomic units — "10000" = 0.01 USDC (6 decimals). Not "price".' },
+                    asset: { type: "string", description: "USDC contract (Base) / mint (Solana) for the network." },
+                    payTo: { type: "string" },
+                    maxTimeoutSeconds: { type: "integer" },
+                    extra: { type: "object", description: "Scheme metadata: name, version; feePayer on Solana." },
+                  } } },
+                  extensions: { type: "object", description: "Declared extensions (bazaar discovery) when applicable." },
+                },
+              } } },
+            },
             "400": out("Malformed body or extract"),
             "422": out("Not deliverable or assertion failed — nothing billed"),
           },
