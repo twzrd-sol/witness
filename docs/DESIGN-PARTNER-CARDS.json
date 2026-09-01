@@ -1,6 +1,6 @@
 {
   "purpose": "Give a named agent builder one concrete reason to try Witness.",
-  "shared_instruction": "Send the exact JSON to POST /quote. Pay POST /witness only after a 200 can_deliver response. Repeat the identical method once if the first receipt is useful.",
+  "shared_instruction": "Send the exact JSON to POST /quote. Pay POST /witness only after 200 can_deliver:true. Then POST /witness again with the identical bytes. Two $0.01 settlements, two receipts, one spec_hash. Do not change url, extract, assertion, or replicas between pays.",
   "cards": [
     { "job": "ranking", "message": "Can your agent use a signed current ranking instead of trusting a scraped list?", "method": { "url": "https://outbid.sh/top", "retrieval": "scrape", "extract": { "rank": "number" }, "assertion": "rank < 100", "replicas": 1 } },
     { "job": "price", "message": "Need a timestamped public price with evidence? Try this bounded BTC-USD observation.", "method": { "url": "https://api.coinbase.com/v2/prices/BTC-USD/spot", "retrieval": "scrape", "extract": { "amount": "number" }, "assertion": "amount < 1000000", "replicas": 1 } },
