@@ -28,6 +28,12 @@ test("quote 200 when fixture html fills extract", async () => {
   assert.deepEqual(out.json, { price_usdc: "0.01", replicas: 1, can_deliver: true });
 });
 
+test("quote 422s assertion failures before payment", async () => {
+  const out = await handleQuote({ ...BODY, assertion: "starter_price < 10" }, { retrieve: async () => ({ text: FIXTURE }) });
+  assert.equal(out.status, 422);
+  assert.equal(out.json.reason, "assertion_failed");
+});
+
 test("scrape 422 does not call browse", async () => {
   let scrape = 0, browse = 0;
   const out = await handleQuote(BODY, {
@@ -51,5 +57,17 @@ test("POST /quote SSRF does not retrieve", async () => {
   assert.equal(res.status, 422);
   assert.equal((await res.json()).reason, "https_only");
   assert.equal(n, 0);
+  await new Promise((r) => server.close(r));
+});
+
+test("POST /quote rate limits anonymous reader probes", async () => {
+  const app = createApp({ key: generateProcessKey(), quoteRateLimit: 1, retrieve: async () => ({ text: FIXTURE }) });
+  const server = app.listen(0, "127.0.0.1");
+  await new Promise((r) => server.once("listening", r));
+  const request = () => fetch(`http://127.0.0.1:${server.address().port}/quote`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(BODY) });
+  assert.equal((await request()).status, 200);
+  const limited = await request();
+  assert.equal(limited.status, 429);
+  assert.equal((await limited.json()).reason, "quote_rate_limited");
   await new Promise((r) => server.close(r));
 });

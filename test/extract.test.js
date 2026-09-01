@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert";
-import { fillExtract } from "../src/extract.js";
+import { evidenceSnippet, fillExtract } from "../src/extract.js";
 
 test("string extract: label syntax (bounds unchanged)", () => {
   assert.deepEqual(fillExtract("currency: USD", { currency: "string" }), { values: { currency: "USD" }, missing: [] });
@@ -25,6 +25,15 @@ test("number extract: quoted JSON keys/values still parse", () => {
   assert.deepEqual(fillExtract('{"stock":43}', { stock: "number" }).values.stock, 43);
   assert.deepEqual(fillExtract(JSON.stringify({ data: { amount: "43125.67" } }), { amount: "number" }).values.amount, 43125.67);
   assert.deepEqual(fillExtract("no numbers here", { stock: "number" }).missing, ["stock"]);
+});
+
+test("evidence cites snippets around extracted values", () => {
+  const text = "boilerplate ".repeat(30) + '"rank": 7, "name": "useful result"';
+  const found = fillExtract(text, { rank: "number", name: "string" });
+  const evidence = evidenceSnippet(text, found.spans);
+  assert.match(evidence, /rank/);
+  assert.match(evidence, /useful result/);
+  assert.ok(evidence.length <= 160);
 });
 
 test("extract keys require exact boundaries", () => {

@@ -27,7 +27,7 @@ const EXAMPLE = { url: "https://outbid.sh/top", extract: { rank: "number" }, ret
     assertion: { type: ["string", "null"], description: "Echoed post-condition; null when the request omitted it." },
     observed_at: { type: "string", format: "date-time" },
     source_hash: { type: "string", description: "sha256 of the retrieved source text." },
-    evidence: { type: "string", description: "First 160 chars of the retrieved source." },
+    evidence: { type: "string", description: "Short cited snippet(s) around the extracted value(s), up to 160 characters." },
     agreement: { type: "string" },
     method: { type: "object", description: "Full canonical method {url, retrieval, extract, assertion} — signed inside the receipt, so a second vantage can re-observe." },
     spec_hash: { type: "string", description: "sha256 of the deep-canonical method; same method => same spec_hash." },
@@ -61,13 +61,14 @@ export function openapiDoc(env = process.env) {
       "/quote": {
         post: {
           summary: "Free deliverability probe",
-          description: "200 means the observation can be performed now; 422 means it cannot (ssrf refusal, retrieve failure, empty page, or extract fields missing). Never bills.",
+          description: "200 means the observation can be performed now; 422 means it cannot (ssrf refusal, retrieve failure, empty page, extract fields missing, or assertion failure). Never bills. Probes are rate-limited per client.",
           security: [],
           requestBody: body(quoteRequest, EXAMPLE),
           responses: {
             "200": out("Deliverable now", { type: "object", properties: { price_usdc: { const: "0.01" }, replicas: { type: "integer" }, can_deliver: { const: true } } }),
             "400": out("Malformed body or extract"),
             "422": out("Not deliverable now — nothing billed"),
+            "429": out("Quote probe rate limit exceeded — nothing billed"),
           },
         },
       },

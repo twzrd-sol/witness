@@ -1,6 +1,6 @@
 import express from "express";
 import { assertPublicHttps, SsrfError } from "./ssrf.js";
-import { fillExtract } from "./extract.js";
+import { evidenceSnippet, fillExtract } from "./extract.js";
 import { loadOrCreateKeystore } from "./keystore.js";
 import { evalAssertion, pubkeyB64, signReceipt, sourceHash } from "./receipt.js";
 import { appendObservation, compareReceipts, methodFromRequest, readObservations, specHash, VALID_FOR_MS } from "./observatory.js";
@@ -52,8 +52,9 @@ export async function handleQuote(body, { retrieve } = {}) {
     return { status: 422, json: { reason: "retrieve_failed" } };
   }
   if (!text) return { status: 422, json: { reason: "retrieve_empty" } };
-  const { missing } = fillExtract(text, extract);
+  const { values, missing } = fillExtract(text, extract);
   if (missing.length) return { status: 422, json: { reason: "extract_missing", missing } };
+  if (!evalAssertion(values, body.assertion)) return { status: 422, json: { reason: "assertion_failed" } };
   return { status: 200, json: { price_usdc: PRICE_USDC, replicas: replicas || 1, can_deliver: true }, text };
 }
 
@@ -83,7 +84,7 @@ export async function handleWitness(body, deps = {}) {
     }
     if (!text) return { status: 422, json: { reason: "retrieve_empty" } };
   }
-  const { values, missing } = fillExtract(text, body.extract);
+  const { values, missing, spans } = fillExtract(text, body.extract);
   if (missing.length) return { status: 422, json: { reason: "extract_missing", missing } };
   if (!evalAssertion(values, body.assertion)) {
     return { status: 422, json: { reason: "assertion_failed" } };
@@ -95,7 +96,7 @@ export async function handleWitness(body, deps = {}) {
     assertion: body.assertion ?? null,
     observed_at,
     source_hash: sourceHash(text),
-    evidence: text.slice(0, 160),
+    evidence: evidenceSnippet(text, spans),
     agreement: "1-of-1",
     method,
     spec_hash: specHash(method),
@@ -114,6 +115,18 @@ export function createApp(deps = {}) {
   const resourceUrl = `${deps.publicBaseUrl || "https://witness.outbid.sh"}/witness`;
   const app = express();
   const funnelDir = deps.funnelDir === undefined ? wired.observationsDir : deps.funnelDir;
+  const quoteHits = new Map();
+  const configuredQuoteLimit = Number(deps.quoteRateLimit ?? process.env.QUOTE_RATE_LIMIT_PER_MINUTE ?? 30);
+  const quoteLimit = Number.isInteger(configuredQuoteLimit) && configuredQuoteLimit > 0 ? configuredQuoteLimit : 30;
+  const quoteWindowMs = 60_000;
+  const quoteAllowed = (ip) => {
+    const now = Date.now();
+    const prior = quoteHits.get(ip);
+    const hits = prior && now - prior.startedAt < quoteWindowMs ? prior : { startedAt: now, count: 0 };
+    hits.count += 1;
+    quoteHits.set(ip, hits);
+    return hits.count <= quoteLimit;
+  };
   app.use((req, res, next) => {
     if (req.method !== "POST" || (req.path !== "/quote" && req.path !== "/witness")) return next();
     res.on("finish", () => {
@@ -139,7 +152,10 @@ export function createApp(deps = {}) {
     const now = (wired.now ?? (() => new Date().toISOString()))();
     res.type("html").send(renderStarMap(compareReceipts(readObservations(wired.observationsDir), key.publicKey, now), now));
   });
-  app.post("/quote", async (req, res) => reply(res, await handleQuote(req.body, wired)));
+  app.post("/quote", async (req, res) => {
+    if (!quoteAllowed(req.ip)) return reply(res, { status: 429, json: { reason: "quote_rate_limited" } });
+    return reply(res, await handleQuote(req.body, wired));
+  });
   const accepts = witnessAccepts(deps.paywall);
   if (accepts.length) {
     const bazaar = declareDiscoveryExtension({
