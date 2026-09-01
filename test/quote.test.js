@@ -40,7 +40,7 @@ test("scrape 422 does not call browse", async () => {
 
 test("POST /quote SSRF does not retrieve", async () => {
   let n = 0;
-  const app = createApp({ key: generateProcessKey(), retrieve: async () => (n++, { text: FIXTURE }) });
+  const app = createApp({ key: generateProcessKey(), retrieve: async () => (n++, { text: FIXTURE }), funnelDir: null });
   const server = app.listen(0, "127.0.0.1");
   await new Promise((r) => server.once("listening", r));
   const res = await fetch(`http://127.0.0.1:${server.address().port}/quote`, {
@@ -51,5 +51,16 @@ test("POST /quote SSRF does not retrieve", async () => {
   assert.equal(res.status, 422);
   assert.equal((await res.json()).reason, "https_only");
   assert.equal(n, 0);
+  await new Promise((r) => server.close(r));
+});
+test("POST /quote rate limits anonymous reader probes", async () => {
+  const app = createApp({ key: generateProcessKey(), quoteRateLimit: 1, retrieve: async () => ({ text: FIXTURE }), funnelDir: null });
+  const server = app.listen(0, "127.0.0.1");
+  await new Promise((r) => server.once("listening", r));
+  const request = () => fetch(`http://127.0.0.1:${server.address().port}/quote`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(BODY) });
+  assert.equal((await request()).status, 200);
+  const limited = await request();
+  assert.equal(limited.status, 429);
+  assert.equal((await limited.json()).reason, "quote_rate_limited");
   await new Promise((r) => server.close(r));
 });
