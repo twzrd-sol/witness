@@ -26,3 +26,13 @@ test("number extract: quoted JSON keys/values still parse", () => {
   assert.deepEqual(fillExtract(JSON.stringify({ data: { amount: "43125.67" } }), { amount: "number" }).values.amount, 43125.67);
   assert.deepEqual(fillExtract("no numbers here", { stock: "number" }).missing, ["stock"]);
 });
+
+test("extract keys require exact boundaries", () => {
+  for (const text of ['{"conversion":"wrong"}', "subversion: wrong", '{"versioned":"wrong"}']) {
+    assert.deepEqual(fillExtract(text, { version: "string" }).missing, ["version"]);
+    assert.deepEqual(fillExtract(text, { version: "number" }).missing, ["version"]);
+  }
+  assert.equal(fillExtract('version: "2.32.5"', { version: "string" }).values.version, "2.32.5");
+  assert.equal(fillExtract('{"version":2,"version_extra":99}', { version: "number" }).values.version, 2);
+  assert.equal(fillExtract('{"version_extra":99,"version":3}', { version: "number" }).values.version, 3);
+});
