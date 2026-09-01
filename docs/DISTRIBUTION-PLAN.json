@@ -1,0 +1,46 @@
+{
+  "version": "0.1",
+  "product": "Witness",
+  "resource": "https://witness.outbid.sh/witness",
+  "positioning": "Pay for a bounded public observation and receive signed, time-bounded evidence.",
+  "jobs": [
+    { "id": "rank", "question": "What is this public ranking now?", "example": { "url": "https://outbid.sh/top", "extract": { "rank": "number" }, "assertion": "rank < 100" } },
+    { "id": "price", "question": "What price is published now?", "example": { "url": "https://api.coinbase.com/v2/prices/BTC-USD/spot", "extract": { "amount": "number" }, "assertion": "amount < 1000000" } },
+    { "id": "availability", "question": "Is a public item in stock?", "example": { "url": "https://dummyjson.com/products/1", "extract": { "stock": "number" }, "assertion": "stock < 100000" } },
+    { "id": "version", "question": "Which release is published?", "example": { "url": "https://pypi.org/pypi/requests/json", "extract": { "version": "string" } } },
+    { "id": "record", "question": "Does a public record exist?", "example": { "url": "https://jsonplaceholder.typicode.com/todos/1", "extract": { "userId": "number" }, "assertion": "userId < 100" } }
+  ],
+  "funnel": [
+    "agent_discovery",
+    "quote_deliverable",
+    "x402_challenge",
+    "signed_receipt",
+    "repeat_observation",
+    "downstream_action"
+  ],
+  "channels": [
+    { "name": "Coinbase Bazaar discovery docs", "url": "https://docs.cdp.coinbase.com/agentic-wallet/mcp/mcp-tools/list-bazaar-resources", "action": "Ensure Bazaar metadata is truthful and measure referrals." },
+    { "name": "the402.ai agents page", "url": "https://the402.ai/agents/", "action": "Observe agent discovery; no unsolicited posting." },
+    { "name": "x402.jobs", "url": "https://www.x402.jobs/", "action": "Evaluate listing/referral path before submission." },
+    { "name": "agent402.tools marketplace", "url": "https://agent402.tools/marketplace", "action": "Inspect indexing and traffic; do not claim demand from presence." }
+  ],
+  "experiments": [
+    { "id": "design-partners", "sample": 10, "instruction": "Give each agent one job card; ask it to quote first and pay only after a deliverable response." },
+    { "id": "repeat-proof", "sample": 3, "instruction": "Invite prior users to run the same method again without reimbursement." },
+    { "id": "sponsored-pilot", "sample": 3, "instruction": "If reimbursing a named participant, label it sponsorship and keep it separate from organic demand." }
+  ],
+  "success": {
+    "rail": "one independently controlled wallet pays twice",
+    "problem": "three external wallets or ten paid observations",
+    "retention": "two wallets return voluntarily",
+    "value": "a receipt changes a downstream agent decision"
+  },
+  "rules": [
+    "No mass unsolicited GitHub campaign.",
+    "No fabricated demand, testimonials, or directory claims.",
+    "Never pay before a 200 quote; never log wallet, IP, URL, evidence, or payment headers.",
+    "Do not add a marketplace, token, dashboard, or staking mechanic for this experiment.",
+    "Indexing or listing presence on any channel is not demand proof; only independently controlled payments count."
+  ],
+  "next_action": "Recruit ten named design partners from existing agent and x402 relationships, one concrete job per partner, and record only funnel outcomes."
+}
