@@ -17,8 +17,7 @@ export function funnelOutcome(route, status) {
   if (route === "/quote") return status === 200 ? "quote_deliverable" : "quote_non_deliverable";
   if (status === 200) return "witness_signed_receipt";
   if (status === 402) return "witness_402_challenge";
-  if (status === 422) return "witness_non_deliverable";
-  return "witness_bad_request";
+  return "witness_non_deliverable";
 }
 
 export function funnelSpecHash(body) {

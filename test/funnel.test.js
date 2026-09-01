@@ -16,13 +16,15 @@ function readFunnel(dir) {
   return readFileSync(path.join(dir, "funnel.ndjson"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
 }
 
-test("funnel outcomes map statuses to the four required categories", () => {
+test("funnel outcomes map statuses to the five contract categories", () => {
   assert.equal(funnelOutcome("/quote", 200), "quote_deliverable");
   assert.equal(funnelOutcome("/quote", 422), "quote_non_deliverable");
   assert.equal(funnelOutcome("/quote", 400), "quote_non_deliverable");
   assert.equal(funnelOutcome("/witness", 402), "witness_402_challenge");
   assert.equal(funnelOutcome("/witness", 200), "witness_signed_receipt");
   assert.equal(funnelOutcome("/witness", 422), "witness_non_deliverable");
+  assert.equal(funnelOutcome("/witness", 400), "witness_non_deliverable", "witness 400 falls into the five-label taxonomy");
+  assert.equal(funnelOutcome("/witness", 500), "witness_non_deliverable");
 });
 
 test("funnel log records outcomes with spec_hash and zero sensitive fields", async () => {
