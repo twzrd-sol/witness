@@ -2,14 +2,15 @@ const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 function findValue(text, key, type) {
   const k = esc(key);
-  const exactKey = `(?<![A-Za-z0-9_$])"?${k}"?(?![A-Za-z0-9_$])`;
+  // Keep dotted, hyphenated, and Unicode key names from matching a suffix.
+  const exactKey = `(?<![\\p{L}\\p{N}.$_-])"?${k}"?(?![\\p{L}\\p{N}.$_-])`;
   if (type === "number") {
-    const m = text.match(new RegExp(`${exactKey}[^0-9\\n-]{0,60}(-?[$€£]?[\\d,]+(?:\\.\\d+)?)`, "i"));
+    const m = text.match(new RegExp(`${exactKey}[^0-9\\n-]{0,60}(-?[$€£]?[\\d,]+(?:\\.\\d+)?)`, "iu"));
     if (!m) return null;
     const n = Number(m[1].replace(/[$€£,]/g, ""));
     return Number.isFinite(n) ? n : null;
   }
-  const m = text.match(new RegExp(`${exactKey}\\s*[:=]\\s*(?:"([^"\\n]{1,128})"|([^"\\s<]{1,64}))`, "i"));
+  const m = text.match(new RegExp(`${exactKey}\\s*[:=]\\s*(?:"([^"\\n]{1,128})"|([^"\\s<]{1,64}))`, "iu"));
   if (!m) return null;
   return (m[1] ?? m[2]).trim();
 }
