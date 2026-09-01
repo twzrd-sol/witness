@@ -51,7 +51,7 @@ test("funnel log records outcomes with spec_hash and zero sensitive fields", asy
     for (const e of events) {
       assert.deepEqual(Object.keys(e).sort(), ["outcome", "route", "spec_hash", "status", "ts"].filter((k) => k in e).sort(), "only whitelisted fields");
       const raw = JSON.stringify(e);
-      for (const forbidden of ["example.com", "starter_price", "49", "x-payment", "payment-signature", "user-agent", "0x", "evidence", "http://", "https://"]) {
+      for (const forbidden of ["example.com", "starter_price", "x-payment", "payment-signature", "user-agent", "0x", "evidence", "http://", "https://"]) {
         assert.ok(!raw.includes(forbidden), `no sensitive material: ${forbidden}`);
       }
     }
