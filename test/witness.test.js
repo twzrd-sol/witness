@@ -267,6 +267,9 @@ test("paywall wired: unpaid deliverable still returns the x402 402 challenge", a
   const challenge = JSON.parse(Buffer.from(res.headers.get("payment-required"), "base64").toString("utf8"));
   assert.equal(challenge.x402Version, 2);
   assert.deepEqual(challenge.accepts.map((a) => a.network).sort(), ["eip155:8453", "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"]);
+  const bodyJson = await res.json();
+  assert.equal(bodyJson.error, "Payment required");
+  assert.equal(bodyJson.accepts.length, 2);
 });
 
 test("explicit deps.paid (not an HTTP header) still signs a verifiable receipt", async () => {

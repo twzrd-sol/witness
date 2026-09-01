@@ -25,7 +25,12 @@ function paymentMiddlewareWithBody(routes, rs) {
       if (res.statusCode === 402 && body && typeof body === "object" && Object.keys(body).length === 0) {
         const pr = res.getHeader("PAYMENT-REQUIRED") || res.getHeader("payment-required");
         if (typeof pr === "string") {
-          try { body = JSON.parse(pr); } catch { /* keep {} */ }
+          let decoded = null;
+          try { decoded = JSON.parse(pr); } catch { /* header may be base64url-encoded */ }
+          if (!decoded || typeof decoded !== "object" || Array.isArray(decoded)) {
+            try { decoded = JSON.parse(Buffer.from(pr, "base64url").toString("utf8")); } catch { /* keep {} */ }
+          }
+          if (decoded && typeof decoded === "object" && !Array.isArray(decoded)) body = decoded;
         }
       }
       return orig(body);
