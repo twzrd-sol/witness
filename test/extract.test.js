@@ -28,7 +28,7 @@ test("number extract: quoted JSON keys/values still parse", () => {
 });
 
 test("extract keys require exact boundaries", () => {
-  for (const text of ['{"conversion":"wrong"}', "subversion: wrong", '{"versioned":"wrong"}']) {
+  for (const text of ['{"conversion":"wrong"}', "subversion: wrong", '{"versioned":"wrong"}', '{"foo.version":"wrong"}', '{"not-version":"wrong"}', '{"préversion":"wrong"}']) {
     assert.deepEqual(fillExtract(text, { version: "string" }).missing, ["version"]);
     assert.deepEqual(fillExtract(text, { version: "number" }).missing, ["version"]);
   }
