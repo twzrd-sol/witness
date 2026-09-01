@@ -43,6 +43,7 @@ const LLMS = `# witness
 - GET /openapi.json — OpenAPI 3.1 for POST /quote and POST /witness.
 
 Quote first. Only a 200 quote is worth paying.
+- Change Proof: hold a prior receipt? POST /quote again with prior_receipt = that 200 body; the quote answers changed (true/false), previous_source_hash, and source_hash before you pay. Pay POST /witness with the same body for a signed delta receipt.
 
 Assertion grammar: "<key> <op> <literal>" — numeric ==, <, <=, >, >=; string == with quoted literals; "<key> exists". Omit assertion for a bare extract.
 
@@ -94,6 +95,12 @@ satisfies an extract (and optional assertion). Agents buy the receipt, not HTML.
 Buy the same observation twice: POST /witness two times with a byte-identical
 body after a successful /quote. Two $0.01 settlements, two receipts, one
 spec_hash. Do not change url, extract, assertion, or replicas between pays.
+Change Proof: already holding a receipt? Ask has this page changed since that
+observation: POST /quote again with prior_receipt set to the previous 200
+receipt body. The quote returns changed, previous_source_hash, and this
+retrieve's source_hash before any payment. Pay POST /witness with the same
+body only if you want the signed delta receipt (changed + previous_source_hash
+are bound inside the signature).
 
 Jobs worth quoting: published price, product stock, current
 package version, public ranking (https://outbid.sh/top), public record present.

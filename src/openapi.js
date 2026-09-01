@@ -14,6 +14,7 @@ const quoteRequest = {
     retrieval: { type: "string", enum: ["scrape"], description: 'Retrieval the host performs — "scrape" is the only mode. Optional; the canonical method always records "scrape".', example: "scrape" },
     assertion: { type: "string", description: 'Optional post-condition checked against extracted values, grammar "<key> <op> <literal>": numeric ==, <, <=, >, >= (e.g. "rank < 100"); string == with quoted literals (e.g. \'currency == "USD"\'); "<key> exists". Malformed or type-mismatched assertions fail (422) and nothing is billed.', example: "rank < 100" },
     replicas: { type: "integer", enum: [1] },
+    prior_receipt: { type: "object", description: "Optional Change Proof prior: a previous Witness 200 receipt body. Fail-closed checks (signature, source_hash, method, spec_hash) run before any retrieve; 422 prior_invalid/prior_method_mismatch never bills." },
   },
 };
 
@@ -33,6 +34,8 @@ const EXAMPLE = { url: "https://outbid.sh/top", extract: { rank: "number" }, ret
     spec_hash: { type: "string", description: "sha256 of the deep-canonical method; same method => same spec_hash." },
     valid_until: { type: "string", format: "date-time", description: "observed_at + 1h; receipts perish." },
     vantage: { type: "string" },
+    changed: { type: "boolean", description: "Change Proof — true when source bytes differ from the attached prior receipt; present only when prior_receipt was attached." },
+    previous_source_hash: { type: "string", description: "Change Proof — the prior receipt source_hash; present only when prior_receipt was attached." },
     receipt: { type: "string", description: "ed25519 signature over deep canonical JSON; verify with GET /pubkey." },
   },
 };
@@ -44,7 +47,7 @@ export function openapiDoc(env = process.env) {
     info: {
       title: "witness",
       version: "0.1.0",
-      description: "Paid, attributable, perishable observation of public web facts. witness is an independent oracle: it observes one stated fact (e.g. a page rank) and returns a signed observation. Quote-first — run POST /quote (free): a 200 means the experiment can be performed; only then pay POST /witness twice with the same body ($0.02 USDC via x402, Base or Solana) for two signed receipts. Receipts bind their full method, expire in 1h, and are rendered with contradictions and expiry visible at GET /observatory. Agent docs: /llms.txt and /skill.md. Signing key: GET /pubkey. Payment descriptor: GET /.well-known/x402. robots.txt disallows /witness for crawlers.",
+      description: "Paid, attributable, perishable observation of public web facts. witness is an independent oracle: it observes one stated fact (e.g. a page rank) and returns a signed observation. Quote-first — run POST /quote (free): a 200 means the experiment can be performed; only then pay POST /witness twice with the same body ($0.02 USDC via x402, Base or Solana) for two signed receipts. Receipts bind their full method, expire in 1h, and are rendered with contradictions and expiry visible at GET /observatory. Agent docs: /llms.txt and /skill.md. Change Proof: attach a prior_receipt (a previous 200 receipt body) to ask has this page changed since that observation — the quote answers changed/previous_source_hash/source_hash before any payment; the paid receipt binds them inside the signature. Signing key: GET /pubkey. Payment descriptor: GET /.well-known/x402. robots.txt disallows /witness for crawlers.",
       "x-guidance": "Two-step flow: (1) POST /quote with {url, extract} — free deliverability probe; a 200 with can_deliver:true means the observation can be performed now. (2) Then POST /witness twice with the same body ($0.02 USDC; two receipts, one spec_hash). A 422 means not deliverable and nothing is billed. Docs: /llms.txt and /skill.md; receipt log: /observatory; signing key: /pubkey.",
     },
     tags: [
@@ -65,7 +68,7 @@ export function openapiDoc(env = process.env) {
           security: [],
           requestBody: body(quoteRequest, EXAMPLE),
           responses: {
-            "200": out("Deliverable now", { type: "object", properties: { price_usdc: { const: "0.01" }, replicas: { type: "integer" }, can_deliver: { const: true } } }),
+            "200": out("Deliverable now", { type: "object", properties: { price_usdc: { const: "0.01" }, replicas: { type: "integer" }, can_deliver: { const: true }, changed: { type: "boolean", description: "Change Proof — present only when prior_receipt was attached: retrieved bytes differ from the prior source_hash." }, previous_source_hash: { type: "string", description: "Change Proof — the prior receipt source_hash; present only with prior_receipt." }, source_hash: { type: "string", description: "Change Proof — sha256 of this retrieve; present only with prior_receipt." } } }),
             "400": out("Malformed body or extract"),
             "422": out("Not deliverable now — nothing billed"),
             "429": out("Quote probe rate limit exceeded — nothing billed"),

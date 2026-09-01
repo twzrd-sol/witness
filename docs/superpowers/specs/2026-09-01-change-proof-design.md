@@ -96,7 +96,7 @@ No code change this increment. Extra signed fields are ignored by `compareReceip
 
 ## Public copy
 
-`/llms.txt` and `/skill.md` lead with the change question. Keep the five first-look templates. Do not restore the twice-pay operator ask. One worked example: quote template N → pay once → `POST /quote` again with `prior_receipt` set to that 200 body → pay only if you want the signed delta.
+`/llms.txt` and `/skill.md` lead with the change question. Keep the five first-look templates. Keep the twice-pay operator ask (founder-approved Track A, 2026-09-01) alongside the change flow. One worked example: quote template N → pay once → `POST /quote` again with `prior_receipt` set to that 200 body → pay only if you want the signed delta.
 
 OpenAPI: optional `prior_receipt` on the quote/witness body; document quote 200 extras and the two new receipt properties.
 
