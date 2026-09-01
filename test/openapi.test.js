@@ -29,7 +29,7 @@ test("openapi contract: quote free, witness quote-first paid x402, canonical ori
   assert.ok(w["x-payment"].accepts.every((a) => a.payTo), "accepts carry payTo when env set");
   assert.match(doc.info["x-guidance"], /POST \/quote/);
   assert.match(doc.info["x-guidance"], /POST \/witness/);
-  assert.match(doc.info["x-guidance"], /\$0\.01/);
+  assert.match(doc.info["x-guidance"], /\$0\.02/);
   assert.deepEqual(Object.keys(w.responses).sort(), ["200", "400", "402", "422"]);
   const req = w.requestBody.content["application/json"].schema;
   assert.deepEqual(req.required, ["url", "extract"]);
