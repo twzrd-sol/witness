@@ -1,4 +1,5 @@
-import { witnessAccepts } from "./server.js";
+import { EXTRACT_SCHEMA } from "./extract.js";
+import { ASSERTION_SCHEMA, witnessAccepts } from "./server.js";
 
 const body = (schema, example) => ({ required: true, content: { "application/json": { schema, ...(example ? { example } : {}) } } });
 const out = (description, schema = {}) => ({ description, content: { "application/json": { schema } } });
@@ -10,15 +11,26 @@ const quoteRequest = {
   required: ["url", "extract"],
   properties: {
     url: { type: "string", format: "uri", description: "Public https URL to observe.", example: "https://outbid.sh/top" },
-    extract: { type: "object", minProperties: 1, additionalProperties: { type: "string" }, description: "Field name -> expected type (number|string) the page must contain.", example: { rank: "number" } },
+    extract: { ...EXTRACT_SCHEMA, description: 'Field name -> expected type the page must contain. Per key either the canonical "number" | "string", or the JSON-Schema spelling {"type": "number"|"string"|"integer"} (integer is read as number). Both spellings name the same method and share one spec_hash. Key-count and key-length bounds are in this schema; any other shape is 400 bad_extract.', example: { rank: "number" } },
     retrieval: { type: "string", enum: ["scrape"], description: 'Retrieval the host performs — "scrape" is the only mode. Optional; the canonical method always records "scrape".', example: "scrape" },
-    assertion: { type: "string", description: 'Optional post-condition checked against extracted values, grammar "<key> <op> <literal>": numeric ==, <, <=, >, >= (e.g. "rank < 100"); string == with quoted literals (e.g. \'currency == "USD"\'); "<key> exists". Malformed or type-mismatched assertions fail (422) and nothing is billed.', example: "rank < 100" },
+    assertion: { ...ASSERTION_SCHEMA, description: 'Optional post-condition checked against extracted values, grammar "<key> <op> <literal>": numeric ==, <, <=, >, >= (e.g. "rank < 100"); string == with quoted literals (e.g. \'currency == "USD"\'); "<key> exists". Malformed or type-mismatched assertions fail (422) and nothing is billed. null (or omitted) means no assertion — a receipt method echoes null, so it round-trips as the next request body; any other non-string, or a string over maxLength, is 400 bad_assertion.', example: "rank < 100" },
     replicas: { type: "integer", enum: [1] },
     prior_receipt: { type: "object", description: "Optional Change Proof prior: a previous Witness 200 receipt body. Fail-closed checks (signature, source_hash, method, spec_hash) run before any retrieve; 422 prior_invalid/prior_method_mismatch never bills." },
   },
 };
 
 const EXAMPLE = { url: "https://outbid.sh/top", extract: { rank: "number" }, retrieval: "scrape", assertion: "rank < 100", replicas: 1 };
+
+/** Every 400 is a request-shape error: nothing is retrieved or billed, and the body teaches the fix. One contract for /quote and /witness. */
+const badRequest = out('Malformed request — never billed. reason: "bad_json" (unparseable body); "bad_extract" (extract is not the shape above: wrong dialect, empty, over the key-count or key-length bound, or a typename outside number|string); "bad_assertion" (assertion is neither null nor a string within maxLength). bad_extract and bad_assertion also carry expected (the accepted shape) and example (a value to copy).', {
+  type: "object",
+  required: ["reason"],
+  properties: {
+    reason: { type: "string", enum: ["bad_json", "bad_extract", "bad_assertion"] },
+    expected: { description: "The accepted shape: a template object for extract, the grammar for assertion.", example: { "<key>": "number|string" } },
+    example: { description: "A minimal valid request or value to copy.", example: { url: "https://outbid.sh/top", extract: { rank: "number" } } },
+  },
+});
 
     const receiptSchema = {
   type: "object",
@@ -69,7 +81,7 @@ export function openapiDoc(env = process.env) {
           requestBody: body(quoteRequest, EXAMPLE),
           responses: {
             "200": out("Deliverable now", { type: "object", properties: { price_usdc: { const: "0.01" }, replicas: { type: "integer" }, can_deliver: { const: true }, changed: { type: "boolean", description: "Change Proof — present only when prior_receipt was attached: retrieved bytes differ from the prior source_hash." }, previous_source_hash: { type: "string", description: "Change Proof — the prior receipt source_hash; present only with prior_receipt." }, source_hash: { type: "string", description: "Change Proof — sha256 of this retrieve; present only with prior_receipt." } } }),
-            "400": out("Malformed body or extract"),
+            "400": badRequest,
             "422": out("Not deliverable now — nothing billed"),
             "429": out("Quote probe rate limit exceeded — nothing billed"),
           },
@@ -118,7 +130,7 @@ export function openapiDoc(env = process.env) {
                 },
               } } },
             },
-            "400": out("Malformed body or extract"),
+            "400": badRequest,
             "422": out("Not deliverable or assertion failed — nothing billed"),
           },
         },

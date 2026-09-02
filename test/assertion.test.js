@@ -47,3 +47,17 @@ test("assertion v1: malformed assertions are false (reject-by-default)", () => {
   assert.equal(evalAssertion({ rank: 1 }, null), true, "null assertion -> unconstrained");
   assert.equal(evalAssertion({ rank: 1 }, undefined), true, "undefined assertion -> unconstrained");
 });
+
+test("assertion v1: only the page's own fields exist — Object.prototype is never a field", () => {
+  const page = JSON.parse('{"starter_price":49}');
+  assert.equal(evalAssertion(page, "starter_price exists"), true);
+  for (const inherited of ["constructor", "toString", "valueOf", "hasOwnProperty", "__proto__"]) {
+    assert.equal(evalAssertion(page, `${inherited} exists`), false, `${inherited} exists`);
+    assert.equal(evalAssertion(page, `${inherited} == "x"`), false, `${inherited} == "x"`);
+    assert.equal(evalAssertion(page, `${inherited} < 100`), false, `${inherited} < 100`);
+  }
+  const shadowed = JSON.parse('{"constructor":"x","valueOf":7}');
+  assert.equal(evalAssertion(shadowed, 'constructor == "x"'), true, "an own field that shares a prototype name still counts");
+  assert.equal(evalAssertion(shadowed, "valueOf < 100"), true);
+  assert.equal(evalAssertion(shadowed, "toString exists"), false);
+});

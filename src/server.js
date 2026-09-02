@@ -1,11 +1,11 @@
 import express from "express";
 import { assertPublicHttps, SsrfError } from "./ssrf.js";
-import { evidenceSnippet, fillExtract } from "./extract.js";
+import { evidenceSnippet, EXTRACT_SCHEMA, fillExtract, normalizeExtract } from "./extract.js";
 import { loadOrCreateKeystore } from "./keystore.js";
 import { evalAssertion, pubkeyB64, signReceipt, sourceHash, verifyReceipt } from "./receipt.js";
 import { appendObservation, compareReceipts, methodFromRequest, readObservations, specHash, VALID_FOR_MS } from "./observatory.js";
 import { renderStarMap } from "./star-map.js";
-import { funnelOutcome, funnelSpecHash, recordFunnel } from "./funnel.js";
+import { funnelOutcome, funnelReason, funnelSpecHash, recordFunnel } from "./funnel.js";
 import { paymentMiddleware } from "@x402/express";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { x402ResourceServer, HTTPFacilitatorClient } from "@x402/core/server";
@@ -17,6 +17,14 @@ const AMOUNT_ATOMIC = "10000"; // 0.01 USDC, 6 decimals
 const EVM_NET = "eip155:8453";
 const SVM_NET = "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp";
 const SVM_USDC = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+/** A malformed extract is a request-shape error (400), never a capability claim (422): the body teaches the fix. */
+const BAD_EXTRACT = { reason: "bad_extract", expected: { "<key>": "number|string" }, example: { url: "https://outbid.sh/top", extract: { rank: "number" } } };
+/** The assertion is grammar text, never a structure: String() on a deep array recurses without bound, and a receipt carries it verbatim. */
+export const MAX_ASSERTION_LENGTH = 512;
+/** What both published contracts (openapi.json, the bazaar inputSchema) declare for `assertion`. null is the
+ *  documented "no assertion": a receipt's method echoes it, and that method must validate as the next body. */
+export const ASSERTION_SCHEMA = { type: ["string", "null"], maxLength: MAX_ASSERTION_LENGTH };
+const BAD_ASSERTION = { reason: "bad_assertion", expected: '"<key> <op> <literal>" or "<key> exists"', example: "rank < 100" };
 
 function paymentMiddlewareWithBody(routes, rs) {
   const inner = paymentMiddleware(routes, rs);
@@ -67,15 +75,19 @@ function checkPrior(prior, publicKey, method) {
 
 export async function handleQuote(body, { retrieve, key, retrieval } = {}) {
   if (!body || typeof body !== "object") return { status: 400, json: { reason: "bad_json" } };
-  const { url, extract, replicas } = body;
-  if (!extract || typeof extract !== "object" || !Object.keys(extract).length)
-    return { status: 400, json: { reason: "bad_extract" } };
+  const { url, replicas } = body;
+  // Dialects collapse to the canonical flat map here, before any specHash(): one method, one identity.
+  const extract = normalizeExtract(body.extract);
+  if (!extract) return { status: 400, json: BAD_EXTRACT };
+  const { assertion } = body;
+  if (assertion != null && (typeof assertion !== "string" || assertion.length > MAX_ASSERTION_LENGTH))
+    return { status: 400, json: BAD_ASSERTION };
   if (replicas !== undefined && replicas !== 1)
     return { status: 422, json: { reason: "replicas_unsupported" } };
   const prior = body.prior_receipt;
   let priorInfo = null;
   if (prior !== undefined) {
-    const bad = checkPrior(prior, key?.publicKey, methodFromRequest(body, retrieval ?? "scrape"));
+    const bad = checkPrior(prior, key?.publicKey, methodFromRequest({ ...body, extract }, retrieval ?? "scrape"));
     if (bad) return { status: 422, json: { reason: bad } };
     priorInfo = prior;
   }
@@ -103,10 +115,11 @@ export async function handleQuote(body, { retrieve, key, retrieval } = {}) {
       status: 200,
       json: { price_usdc: PRICE_USDC, replicas: replicas || 1, can_deliver: true, changed: source !== priorInfo.source_hash, previous_source_hash: priorInfo.source_hash, source_hash: source },
       text,
+      extract,
       prior: priorInfo,
     };
   }
-  return { status: 200, json: { price_usdc: PRICE_USDC, replicas: replicas || 1, can_deliver: true }, text };
+  return { status: 200, json: { price_usdc: PRICE_USDC, replicas: replicas || 1, can_deliver: true }, text, extract };
 }
 
 /** Unpaid without deps.paid → 402. Signing only after explicit paid (x402 middleware or test). */
@@ -135,13 +148,13 @@ export async function handleWitness(body, deps = {}) {
     }
     if (!text) return { status: 422, json: { reason: "retrieve_empty" } };
   }
-  const { values, missing, spans } = fillExtract(text, body.extract);
+  const { values, missing, spans } = fillExtract(text, q.extract);
   if (missing.length) return { status: 422, json: { reason: "extract_missing", missing } };
   if (!evalAssertion(values, body.assertion)) {
     return { status: 422, json: { reason: "assertion_failed" } };
   }
   const observed_at = (deps.now ?? (() => new Date().toISOString()))();
-  const method = methodFromRequest(body, deps.retrieval ?? "scrape");
+  const method = methodFromRequest({ ...body, extract: q.extract }, deps.retrieval ?? "scrape");
   const rest = {
     value: values,
     assertion: body.assertion ?? null,
@@ -184,6 +197,10 @@ export function createApp(deps = {}) {
   };
   app.use((req, res, next) => {
     if (req.method !== "POST" || (req.path !== "/quote" && req.path !== "/witness")) return next();
+    // Every reply (handlers, bad_json, 402 challenge) is written via res.json: read its enum reason there.
+    let reason = null;
+    const json = res.json.bind(res);
+    res.json = (body) => { reason = funnelReason(body); return json(body); };
     res.on("finish", () => {
       try {
         const spec_hash = funnelSpecHash(req.body);
@@ -193,6 +210,7 @@ export function createApp(deps = {}) {
           status: res.statusCode,
           outcome: funnelOutcome(req.path, res.statusCode),
           ...(spec_hash ? { spec_hash } : {}),
+          ...(reason && res.statusCode >= 400 ? { reason } : {}),
         });
       } catch { /* funnel must never break the response path */ }
     });
@@ -200,17 +218,20 @@ export function createApp(deps = {}) {
   });
   app.use(express.json({ limit: "64kb" }));
   const reply = (res, out) => res.status(out.status).json(out.json);
-  const witness = async (req, res) => reply(res, await handleWitness(req.body, { ...wired, paid: false }));
-  const paidWitness = async (req, res) => reply(res, await handleWitness(req.body, { ...wired, paid: true }));
+  // Express 4 drops a rejected async handler on the floor: the request hangs and the
+  // process dies on the unhandled rejection. Route every rejection to the 500 handler.
+  const guard = (fn) => (req, res, next) => fn(req, res, next).catch(next);
+  const witness = guard(async (req, res) => reply(res, await handleWitness(req.body, { ...wired, paid: false })));
+  const paidWitness = guard(async (req, res) => reply(res, await handleWitness(req.body, { ...wired, paid: true })));
   app.get("/pubkey", (_req, res) => res.json({ pubkey: pubkeyB64(key) }));
   app.get("/observatory", (_req, res) => {
     const now = (wired.now ?? (() => new Date().toISOString()))();
     res.type("html").send(renderStarMap(compareReceipts(readObservations(wired.observationsDir), key.publicKey, now), now));
   });
-  app.post("/quote", async (req, res) => {
+  app.post("/quote", guard(async (req, res) => {
     if (!quoteAllowed(req.ip)) return reply(res, { status: 429, json: { reason: "quote_rate_limited" } });
     return reply(res, await handleQuote(req.body, wired));
-  });
+  }));
   const accepts = witnessAccepts(deps.paywall);
   if (accepts.length) {
     const bazaar = declareDiscoveryExtension({
@@ -220,8 +241,8 @@ export function createApp(deps = {}) {
         type: "object",
         properties: {
           url: { type: "string" },
-          extract: { type: "object", minProperties: 1, additionalProperties: { type: "string" } },
-          assertion: { type: "string" },
+          extract: EXTRACT_SCHEMA,
+          assertion: ASSERTION_SCHEMA,
           replicas: { type: "integer", enum: [1] },
         },
         required: ["url", "extract"],
@@ -241,12 +262,12 @@ export function createApp(deps = {}) {
     if (deps.paywall.svmAddress) rs.register(SVM_NET, new ExactSvmScheme());
     // Deliverability-first: an unpaid probe runs the quote; only a deliverable
     // request reaches the paywall. A 422 never sees a 402, matching the reader.
-    const deliverable = async (req, res, next) => {
+    const deliverable = guard(async (req, res, next) => {
       if (req.headers["payment-signature"] || req.headers["x-payment"]) return next();
       const out = await handleQuote(req.body, wired);
       if (out.status === 200) return next();
       return reply(res, out);
-    };
+    });
     const witnessMeta = { serviceName: "witness", tags: ["observation", "receipt", "x402", "empiricism"] };
     app.post("/witness", deliverable, paymentMiddlewareWithBody({ "POST /witness": { resource: resourceUrl, accepts, mimeType: "application/json", description: "Independent fact + signed receipt. $0.01 USDC.", ...witnessMeta, extensions: bazaar } }, rs), paidWitness);
     // Crawlable discovery: GET answers the same 402 challenge with zero retrieve.

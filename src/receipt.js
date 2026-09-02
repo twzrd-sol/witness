@@ -44,24 +44,28 @@ const OPS = {
   ">=": (a, b) => a >= b,
 };
 
+/** Own fields only. fillExtract's values (and any JSON.parse'd page) carry Object.prototype,
+ *  so a plain lookup would sign "constructor exists" for a field the page never had. */
+const own = (obj, key) => (obj != null && Object.hasOwn(obj, key) ? obj[key] : undefined);
+
 /** Strict assertion grammar v1 (reject-by-default):
  *  "<key> <op> <literal>" — numeric ==, <, <=, >, >= against number values;
  *  string == against quoted literals ("x" or 'x');
- *  "<key> exists" — any value except undefined/null.
+ *  "<key> exists" — any own value except undefined/null.
  *  Malformed assertions or type mismatches are false, never true. */
 export function evalAssertion(value, assertion) {
   if (!assertion) return true;
   const s = String(assertion).trim();
   const exists = s.match(/^([A-Za-z_][A-Za-z0-9_]*)\s+exists$/);
   if (exists) {
-    const v = value[exists[1]];
+    const v = own(value, exists[1]);
     return v !== undefined && v !== null;
   }
   const m = s.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*(==|<=|>=|<|>)\s*(.*)$/);
   if (!m) return false;
   const [, key, op, raw] = m;
   const rhs = raw.trim();
-  const v = value[key];
+  const v = own(value, key);
   if (v === undefined || v === null) return false;
   const num = rhs.match(/^(-?\d+(?:\.\d+)?)$/);
   if (num) {

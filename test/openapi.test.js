@@ -23,7 +23,7 @@ test("openapi contract: quote free, witness quote-first paid x402, canonical ori
   assert.equal(wreq.schema.properties.retrieval.type, "string");
   assert.deepEqual(wreq.schema.properties.retrieval.enum, ["scrape"], "retrieval is an enum (scrape only)");
   assert.equal(wreq.schema.properties.retrieval.example, "scrape");
-  assert.equal(wreq.schema.properties.assertion.type, "string");
+  assert.deepEqual(wreq.schema.properties.assertion.type, ["string", "null"], "assertion is string|null: null is the no-assertion path a receipt method echoes");
   assert.equal(wreq.schema.properties.assertion.example, "rank < 100");
   assert.deepEqual(wreq.example, { url: "https://outbid.sh/top", extract: { rank: "number" }, retrieval: "scrape", assertion: "rank < 100", replicas: 1 }, "witness example: outbid.sh/top rank method");
   assert.equal(wreq.schema.properties.url.example, "https://outbid.sh/top", "url property example — sampler composes a real probe, not placehold.co");

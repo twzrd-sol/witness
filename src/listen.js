@@ -152,6 +152,27 @@ export function createHostApp(env = process.env, { readerFetch } = {}) {
   return app;
 }
 
+/** Process-level backstop in two phases. Until the server is listening every failure
+ *  is fatal — log and exit 1 so systemd's Restart=on-failure retries in 3s (a swallowed
+ *  EADDRINUSE drains the loop and exits 0, which systemd reads as a clean stop: the
+ *  service stays down). Once listening, an unhandled rejection is logged and the process
+ *  keeps serving — one stray promise from a bad request must not take the paid endpoint
+ *  down. An uncaught exception exits 1 in both phases: Node guarantees nothing about the
+ *  process after one, and every request path is already routed to the 500 handler, so
+ *  whatever reaches here is outside any request; a 3s restart beats signing receipts
+ *  from an unknown state. Installed only by the entrypoint below, so a stray rejection
+ *  in tests still fails loudly. Returns the arming hook for the "listening" event. */
+export function installCrashGuard(proc = process, log = console.error) {
+  let listening = false;
+  const report = (kind, fatal) => (e) => {
+    log(`witness: ${kind}${fatal ? " — exiting 1 for systemd to restart" : ""}`, e && (e.stack || e.message || e));
+    if (fatal) proc.exit(1);
+  };
+  proc.on("unhandledRejection", (e) => report("unhandled rejection", !listening)(e));
+  proc.on("uncaughtException", report("uncaught exception", true));
+  return { listening: () => { listening = true; } };
+}
+
 export function start(env = process.env) {
   const host = env.HOST || "127.0.0.1";
   const port = Number(env.PORT || 4032);
@@ -159,4 +180,7 @@ export function start(env = process.env) {
   return server;
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) start();
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  const guard = installCrashGuard();
+  start().once("listening", guard.listening);
+}
