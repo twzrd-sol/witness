@@ -95,6 +95,9 @@ satisfies an extract (and optional assertion). Agents buy the receipt, not HTML.
 Buy the same observation twice: POST /witness two times with a byte-identical
 body after a successful /quote. Two $0.01 settlements, two receipts, one
 spec_hash. Do not change url, extract, assertion, or replicas between pays.
+Do not attach prior_receipt on the first pair. A one-pay Change Proof delta
+is not two settlements. If /quote already returned 200, do not quote again.
+Do not POST empty. Send url, extract, assertion, replicas:1.
 Change Proof: already holding a receipt? Ask has this page changed since that
 observation: POST /quote again with prior_receipt set to the previous 200
 receipt body. The quote returns changed, previous_source_hash, and this
