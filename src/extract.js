@@ -4,19 +4,47 @@ function findValue(text, key, type) {
   const k = esc(key);
   // Keep dotted, hyphenated, and Unicode key names from matching a suffix.
   const exactKey = `(?<![\\p{L}\\p{N}.$_-])"?${k}"?(?![\\p{L}\\p{N}.$_-])`;
+  // A quoted key followed by a colon is a real field in the document. A bare
+  // `key=` is not: it is equally a URL query parameter or prose. Both matchers
+  // scan left to right and take the first hit, so on any page whose text
+  // mentions the key before the field appears, the loose form wins and the
+  // receipt signs the wrong span. That is not hypothetical -- `version` on
+  // pypi.org matched `?version=latest` inside a README badge URL and a signed
+  // receipt asserted 60 characters of markdown as the package version. Try the
+  // strict field form first; fall back to the loose form only for documents
+  // (HTML, markdown, plain text) that have no quoted-key syntax to offer.
+  const field = `"${k}"\\s*:\\s*`;
+  const span = (m, raw) => ({ value: raw, start: m.index + m[0].indexOf(raw), end: m.index + m[0].indexOf(raw) + raw.length });
+
   if (type === "number") {
-    const m = text.match(new RegExp(`${exactKey}[^0-9\\n-]{0,60}(-?[$€£]?[\\d,]+(?:\\.\\d+)?)`, "iu"));
+    // Anchor on a digit. `[\\d,]+` matches a lone comma, and Number(",".replace(
+    // /,/g,"")) is Number("") is 0 -- which Number.isFinite accepts -- so a field
+    // holding null next to a comma signed a confident 0. Wrong values are worse
+    // than refusals here: the whole product is the receipt being trustworthy.
+    // Ending on a digit too: `3893,` in JSON parsed to the right number but the
+    // quote bound as evidence carried the delimiter, claiming source bytes for
+    // the value that are not part of it.
+    const num = `(-?[$€£]?\\d(?:[\\d,]*\\d)?(?:\\.\\d+)?)`;
+    // The loose gap must not step over a structural boundary. `[^0-9\\n-]{0,60}`
+    // does, so `{"pricing":null,"tax":20}` asked for `pricing` walks the comma
+    // into the next field and signs 20. Barring , { } [ ] keeps the fallback
+    // inside the one field it named; a document that separates key from number
+    // by a boundary is a refusal, which for a paid receipt is the honest answer.
+    const m = text.match(new RegExp(`${field}${num}`, "iu"))
+           ?? text.match(new RegExp(`${exactKey}[^0-9\\n,{}\\[\\]-]{0,60}${num}`, "iu"));
     if (!m) return null;
     const n = Number(m[1].replace(/[$€£,]/g, ""));
-    return Number.isFinite(n)
-      ? { value: n, start: m.index + m[0].indexOf(m[1]), end: m.index + m[0].indexOf(m[1]) + m[1].length }
-      : null;
+    if (!Number.isFinite(n)) return null;
+    const s = span(m, m[1]);
+    return { value: n, start: s.start, end: s.end };
   }
-  const m = text.match(new RegExp(`${exactKey}\\s*[:=]\\s*(?:"([^"\\n]{1,128})"|([^"\\s<]{1,64}))`, "iu"));
+  const val = `(?:"([^"\\n]{1,128})"|([^"\\s<]{1,64}))`;
+  const m = text.match(new RegExp(`${field}${val}`, "iu"))
+         ?? text.match(new RegExp(`${exactKey}\\s*[:=]\\s*${val}`, "iu"));
   if (!m) return null;
-  const value = (m[1] ?? m[2]).trim();
   const rawValue = m[1] ?? m[2];
-  return { value, start: m.index + m[0].indexOf(rawValue), end: m.index + m[0].indexOf(rawValue) + rawValue.length };
+  const s = span(m, rawValue);
+  return { value: rawValue.trim(), start: s.start, end: s.end };
 }
 
 /** Bounds on the wire extract. A key names one field, so 128 chars is generous
