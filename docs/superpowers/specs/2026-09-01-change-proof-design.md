@@ -2,7 +2,7 @@
 
 Date: 2026-09-01  
 Status: approved (founder, 2026-09-01 session) — F1 core implemented (server.js + test/change.test.js); F2 = OpenAPI + copy  
-Increment cap: 150 LOC (GLM implements; Grok reviews)
+Change sizing: no standing LOC cap (operator, 2026-09-06; GLM implements; Grok reviews)
 
 ## Goal
 
@@ -117,4 +117,4 @@ OpenAPI: optional `prior_receipt` on the quote/witness body; document quote 200 
 - OpenAPI + llms/skill strings.
 - `test/change.test.js`.
 
-If the increment would exceed 150 LOC, drop OpenAPI prose first, not the fail-closed tests.
+Keep the necessary OpenAPI documentation and fail-closed tests together; there is no standing LOC cap.
