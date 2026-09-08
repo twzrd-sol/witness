@@ -1,9 +1,9 @@
 import express from "express";
 import { assertPublicHttps, SsrfError } from "./ssrf.js";
-import { evidenceSnippet, EXTRACT_SCHEMA, fillExtract, normalizeExtract } from "./extract.js";
+import { EXTRACT_SCHEMA, fillExtract, normalizeExtract } from "./extract.js";
 import { loadOrCreateKeystore } from "./keystore.js";
 import { pubkeyB64, signReceipt, sourceHash, verifyReceipt } from "./receipt.js";
-import { classifyVerdict } from "./evidence.js";
+import { buildEvidenceBundle, classifyVerdict } from "./evidence.js";
 import { appendObservation, compareReceipts, methodFromRequest, readObservations, specHash, VALID_FOR_MS } from "./observatory.js";
 import { renderStarMap } from "./star-map.js";
 import { funnelOutcome, funnelReason, funnelSpecHash, funnelVerdict, recordFunnel } from "./funnel.js";
@@ -221,6 +221,7 @@ export async function handleWitness(body, deps = {}) {
   const observed_at = (deps.now ?? (() => new Date().toISOString()))();
   const method = methodFromRequest({ ...body, extract: q.extract }, deps.retrieval ?? "scrape");
   const source_hash = sourceHash(text);
+  const evidenceBundle = buildEvidenceBundle(text, q.extract, values, spans);
   const rest = {
     value: values,
     assertion: body.assertion ?? null,
@@ -234,8 +235,12 @@ export async function handleWitness(body, deps = {}) {
     origin_status: null,
     origin_content_type: null,
     representation: { kind: "reader_plaintext", sha256: source_hash, retrieved_at: observed_at },
-    evidence: evidenceSnippet(text, spans),
-    evidence_spans: JSON.parse(JSON.stringify(spans ?? {})),
+    // Both the display snippet and the spans come from the one shared builder, so
+    // the v1 receipt and a v2 observation cannot describe the same extraction
+    // differently. The emitted field names are unchanged: this is a dedup of how
+    // they are produced, not a change to what is published.
+    evidence: evidenceBundle.snippet,
+    evidence_spans: evidenceBundle.spans,
     // The verdict travels with the observation so no reader downstream -- the
     // observatory, a star map, an agent -- can render a contradiction as a fact.
     verdict: verdict ?? null,

@@ -84,7 +84,7 @@ export function openapiDoc(env = process.env) {
           responses: {
             "200": out("Deliverable now", { type: "object", properties: { price_usdc: { const: "0.01" }, replicas: { type: "integer" }, can_deliver: { const: true }, changed: { type: "boolean", description: "Change Proof — present only when prior_receipt was attached: retrieved bytes differ from the prior source_hash." }, previous_source_hash: { type: "string", description: "Change Proof — the prior receipt source_hash; present only with prior_receipt." }, source_hash: { type: "string", description: "Change Proof — sha256 of this retrieve; present only with prior_receipt." } } }),
             "400": badRequest,
-            "422": out("Not deliverable now — nothing billed"),
+            "422": out("Could not be checked — nothing billed, ever. ssrf refusal, retrieve failure, empty page, a malformed assertion, an assertion naming a field the extract did not request, a document where none of the requested fields resolved, or (with no assertion stated) missing extract fields. A claim that simply does not hold is a 200 with verdict contradicted, not a 422."),
             "429": out("Quote probe rate limit exceeded — nothing billed"),
           },
         },

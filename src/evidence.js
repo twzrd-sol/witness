@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { fillExtract, normalizeExtract } from "./extract.js";
+import { evidenceSnippet, fillExtract, normalizeExtract } from "./extract.js";
 import { canonical, evalAssertion, signReceipt, sourceHash, verifyReceipt } from "./receipt.js";
 
 /** Signed into every receipt. A verifier that replays an observation must run the
@@ -82,8 +82,8 @@ export function classifyVerdict(values, missing, assertion) {
 /** Bind each extracted field to the exact bytes it came from: the substring, its
  *  hash, and UTF-16 offsets into the retained text. Spans come from the extractor,
  *  so a receipt cannot claim a quote the matcher did not actually produce. */
-function buildEvidence(text, extract, values, spans) {
-  return Object.keys(extract).sort().filter((f) => Object.hasOwn(values, f)).map((field) => {
+export function buildEvidence(text, extract, values, spans) {
+  return Object.keys(extract ?? {}).sort().filter((f) => Object.hasOwn(values ?? {}, f)).map((field) => {
     const span = spans?.[field];
     const quote = span ? text.slice(span.start, span.end) : null;
     return {
@@ -92,6 +92,19 @@ function buildEvidence(text, extract, values, spans) {
       location: span ? { encoding: "utf16", start: span.start, end: span.end } : null,
     };
   });
+}
+
+/** Shared evidence bundle builder: single source of truth for structured items,
+ *  display snippet, and clean spans across both v1 server receipts and v2 observations. */
+export function buildEvidenceBundle(text, extract, values, spans) {
+  const items = buildEvidence(text, extract, values, spans);
+  const snippet = evidenceSnippet(text, spans);
+  const cleanSpans = JSON.parse(JSON.stringify(spans ?? {}));
+  return {
+    items,
+    snippet,
+    spans: cleanSpans,
+  };
 }
 
 /**
