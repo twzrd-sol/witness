@@ -74,7 +74,7 @@ export const BILLABLE_VERDICTS = Object.freeze(["supported", "contradicted", "in
  *  way paid non-supported verdicts become a scam, so this is a constant the
  *  billing path reads -- not a comment describing an intention. */
 export const NEVER_BILLED = Object.freeze([
-  "unable_to_verify", "assertion_malformed", "assertion_field_not_extracted",
+  "unable_to_verify", "assertion_malformed", "assertion_field_not_extracted", "extract_none",
   "evidence_mismatch", "verdict_mismatch",
   "retrieve_failed", "retrieve_empty", "retrieve_not_wired",
   "bad_json", "bad_extract", "bad_assertion", "replicas_unsupported",
@@ -143,6 +143,17 @@ export async function handleQuote(body, { retrieve, key, retrieval } = {}) {
   // claim needed. With no claim there is nothing for it to be incomplete about
   // and nothing to sell, so a bare extract miss stays the free refusal it was.
   if (verdict === null && missing.length) return { status: 422, json: { reason: "extract_missing", missing } };
+  // Zero-extraction guard. `incomplete` bills on the premise that we looked and
+  // the source did not carry the field -- but a document where NOTHING extracted
+  // is equally a document our matcher could not read, and those two are not
+  // mechanically distinguishable. Eight of ten realistic claims failed that way
+  // as recently as last week, purely from extractor defects. One other field
+  // coming back proves the extractor works on this document, so the miss is the
+  // source's. Nothing coming back proves nothing, and we do not charge for it.
+  // Consequence, stated plainly: a single-field claim can never bill incomplete,
+  // because there is no second field to prove anything with.
+  if (verdict === "incomplete" && !Object.keys(values).length)
+    return { status: 422, json: { reason: "extract_none", missing } };
   if (!isBillable(verdict)) return { status: 422, json: { reason: classified.reason ?? "unable_to_verify" } };
   const verdict_reason = verdict === null ? null : classified.reason ?? null;
   // A quote is a price announcement, not a signed document: a request that made no
@@ -200,6 +211,8 @@ export async function handleWitness(body, deps = {}) {
     if (filled.missing.length && body.assertion == null) return { status: 422, json: { reason: "extract_missing", missing: filled.missing } };
     const c = classifyVerdict(filled.values, filled.missing, body.assertion);
     verdict = body.assertion == null ? null : c.verdict;
+    if (verdict === "incomplete" && !Object.keys(filled.values).length)
+      return { status: 422, json: { reason: "extract_none", missing: filled.missing } };
     if (!isBillable(verdict)) return { status: 422, json: { reason: c.reason ?? "unable_to_verify" } };
     ({ values } = filled);
     spans = filled.spans ?? {};

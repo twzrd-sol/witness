@@ -17,7 +17,9 @@ const reader = (text) => async () => ({ text });
 const REACHABLE = [
   ["supported",    body("starter_price < 100"),      FIXTURE],
   ["contradicted", body("starter_price < 10"),       FIXTURE],
-  ["incomplete",   body("starter_price < 100"),      "<p>nothing here</p>"],
+  // incomplete must be reached the only way it now bills: another requested field
+  // resolves, proving the extractor read this document, so the miss is the source's.
+  ["incomplete",   { url: URL, extract: { starter_price: "number", currency: "string" }, assertion: "starter_price < 100" }, "<p>currency: USD</p>"],
 ];
 
 test("what you are quoted is what you are issued, for every reachable verdict", async () => {
@@ -98,4 +100,30 @@ test("twice-pay survives the new class: two contradicted receipts group into one
   // Steady agreement about a false claim is still a false claim.
   assert.equal(cards[0].verdict, "contradicted");
   assert.equal(cards[0].spec_hash, specHash(first.json.method));
+});
+
+test("a document where nothing extracted is never billed as incomplete", async () => {
+  // The hazard this closes: extract_missing covers both "the source lacks the
+  // field" and "our matcher could not read it", and those are not mechanically
+  // distinguishable. Eight of ten realistic claims failed the second way as
+  // recently as last week. One other field returning proves the extractor works
+  // on this document; nothing returning proves nothing, so it stays free.
+  const b = { url: URL, extract: { starter_price: "number" }, assertion: "starter_price < 100" };
+  const q = await handleQuote(b, { retrieve: reader("<p>nothing here</p>") });
+  assert.deepEqual([q.status, q.json.reason], [422, "extract_none"]);
+  assert.equal(q.json.price_usdc, undefined, "a document we may simply have failed to read is not priced");
+  assert.equal((await handleWitness(b, { retrieve: reader("<p>nothing here</p>") })).status, 422, "and never reaches the paywall");
+  assert.ok(NEVER_BILLED.includes("extract_none"));
+});
+
+test("incomplete still bills when another field proves the extractor read the page", async () => {
+  // currency is found, starter_price is genuinely absent: the miss is the source's.
+  const b = { url: URL, extract: { starter_price: "number", currency: "string" }, assertion: "starter_price < 100" };
+  const q = await handleQuote(b, { retrieve: reader("<p>currency: USD</p>") });
+  assert.equal(q.status, 200);
+  assert.equal(q.json.verdict, "incomplete");
+  assert.deepEqual(q.json.missing, ["starter_price"]);
+  const w = await handleWitness(b, { retrieve: reader("<p>currency: USD</p>"), paid: true, key: generateProcessKey() });
+  assert.equal(w.json.verdict, "incomplete");
+  assert.equal(w.json.value.currency, "USD", "the evidence we did find is still in the receipt");
 });

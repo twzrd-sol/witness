@@ -47,7 +47,9 @@ test("an unreadable claim is never priced -- unable_to_verify stays a free refus
 });
 
 test("a claim whose field the source lacks is quoted as incomplete, and says which", async () => {
-  const out = await handleQuote({ url: BODY.url, extract: { nowhere: "number" }, assertion: "nowhere < 10" },
+  // starter_price resolves, so the extractor demonstrably read this page and the
+  // absent field is the source's gap -- the only shape in which incomplete bills.
+  const out = await handleQuote({ url: BODY.url, extract: { nowhere: "number", starter_price: "number" }, assertion: "nowhere < 10" },
     { retrieve: async () => ({ text: FIXTURE }) });
   assert.equal(out.status, 200);
   assert.equal(out.json.verdict, "incomplete");

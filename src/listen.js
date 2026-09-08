@@ -42,7 +42,7 @@ Verdicts. A 200 quote carries the verdict the receipt will be signed with, so yo
 - supported — every field was found and the claim holds.
 - contradicted — every field was found and the claim does not hold. This is an answer, not an error: the source does not say what you were told.
 - incomplete — a field the claim needs was requested and the source did not carry it.
-A claim we cannot read is never priced: a malformed assertion, or one naming a field your extract did not request, is a free 422 (assertion_malformed, assertion_field_not_extracted). So is any failure on our side (retrieve_failed, retrieve_empty, bad_json, bad_extract, bad_assertion). Omit assertion for a bare extract and the receipt carries no verdict at all.
+A claim we cannot read is never priced: a malformed assertion, or one naming a field your extract did not request, is a free 422 (assertion_malformed, assertion_field_not_extracted). So is any failure on our side (retrieve_failed, retrieve_empty, bad_json, bad_extract, bad_assertion), and so is a document where none of your requested fields resolved (extract_none): we cannot tell a page that lacks them from one we failed to read, so you are not charged for it. incomplete is therefore only sold when some other requested field did resolve, proving we read the page. Omit assertion for a bare extract and the receipt carries no verdict at all.
 - GET /pubkey — ed25519 key (receipts are signed over deep canonical JSON, 1h validity).
 - GET /observatory — verified receipts; contradictions and expiry are visible.
 - GET /.well-known/x402 — payment descriptor for POST /witness.

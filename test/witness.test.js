@@ -44,8 +44,10 @@ test("paid card appends; /observatory reads the log, not seeds", async () => {
     observationsDir: dir,
   });
   assert.equal(out.status, 200);
+  // Partial source: currency resolves, starter_price does not. That proves the
+  // extractor read the page, so the miss is the source's and the answer bills.
   const miss = await handleWitness(BODY, {
-    retrieve: async () => ({ text: "<p>hi</p>" }),
+    retrieve: async () => ({ text: "<p>currency: USD</p>" }),
     paid: true,
     key,
     now,
@@ -87,7 +89,7 @@ test("a card never renders a non-supported group as one settled answer", async (
   const cardsOne = compareReceipts(readObservations(dir), key.publicKey, new Date(now()));
   assert.equal(cardsOne[0].verdict, "supported");
 
-  await handleWitness(BODY, { ...deps, retrieve: async () => ({ text: "<p>hi</p>" }) });
+  await handleWitness(BODY, { ...deps, retrieve: async () => ({ text: "<p>currency: USD</p>" }) });
   const cards = compareReceipts(readObservations(dir), key.publicKey, new Date(now()));
   assert.equal(cards.length, 1, "one method, one card");
   assert.equal(cards[0].verdict, "mixed", "a disagreeing group must not read as supported");
@@ -95,12 +97,20 @@ test("a card never renders a non-supported group as one settled answer", async (
 });
 
 test("a claim the source cannot answer is quoted, charged, and labelled incomplete", async () => {
-  const out = await handleWitness(BODY, { retrieve: async () => ({ text: "<p>hi</p>" }) });
+  const partial = async () => ({ text: "<p>currency: USD</p>" });
+  const out = await handleWitness(BODY, { retrieve: partial });
   assert.equal(out.status, 402, "incomplete is a billable answer, so it reaches the paywall");
-  const paid = await handleWitness(BODY, { retrieve: async () => ({ text: "<p>hi</p>" }), paid: true, key: generateProcessKey() });
+  const paid = await handleWitness(BODY, { retrieve: partial, paid: true, key: generateProcessKey() });
   assert.equal(paid.status, 200);
   assert.equal(paid.json.verdict, "incomplete");
-  assert.deepEqual(paid.json.value, {}, "no field was found, and none is claimed");
+  assert.deepEqual(paid.json.value, { currency: "USD" }, "the evidence we did find is still in the receipt");
+});
+
+test("a document where nothing resolved is not sold as incomplete", async () => {
+  // We cannot tell "the page lacks every field" from "our matcher read none of
+  // them", so this is free -- the guard against billing our own defects.
+  const out = await handleWitness(BODY, { retrieve: async () => ({ text: "<p>hi</p>" }) });
+  assert.deepEqual([out.status, out.json.reason], [422, "extract_none"]);
 });
 
 test("with no claim, an extract miss still never reaches the paywall", async () => {

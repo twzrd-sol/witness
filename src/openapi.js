@@ -38,7 +38,7 @@ const badRequest = out('Malformed request — never billed. reason: "bad_json" (
   properties: {
     value: { type: "object" },
     assertion: { type: ["string", "null"], description: "Echoed post-condition; null when the request omitted it." },
-    verdict: { type: ["string", "null"], enum: ["supported", "contradicted", "incomplete", null], description: 'What the observation found. "supported": every field was found and the claim holds. "contradicted": every field was found and the claim does not hold — the source does not say what you were told. "incomplete": a field the claim needs was requested and the source did not carry it. null: the request stated no assertion, so no claim was checked; a receipt with no assertion never reads as supported. Inside the signature, and the same $0.01 whichever it is.' },
+    verdict: { type: ["string", "null"], enum: ["supported", "contradicted", "incomplete", null], description: 'What the observation found. "supported": every field was found and the claim holds. "contradicted": every field was found and the claim does not hold — the source does not say what you were told. "incomplete": a field the claim needs was requested and the source did not carry it, while some other requested field did resolve, proving the page was read. If nothing resolved, the observation is not sold at all. null: the request stated no assertion, so no claim was checked; a receipt with no assertion never reads as supported. Inside the signature, and the same $0.01 whichever it is.' },
     verdict_reason: { type: ["string", "null"], description: "Fixed-vocabulary detail behind a non-supported verdict (e.g. assertion_false, extract_missing); null when supported or when no claim was made." },
     observed_at: { type: "string", format: "date-time" },
     source_hash: { type: "string", description: "sha256 of the retrieved source text." },
@@ -78,7 +78,7 @@ export function openapiDoc(env = process.env) {
       "/quote": {
         post: {
           summary: "Free deliverability probe",
-          description: "200 means the observation can be performed now, and the body announces the verdict (supported | contradicted | incomplete) the paid receipt will be signed with, so the answer is known before paying — all three cost the same. 422 means it cannot be checked at all and is never billed: ssrf refusal, retrieve failure, empty page, a malformed assertion, an assertion naming a field the extract did not request, or (with no assertion stated) missing extract fields. Never bills either way. Probes are rate-limited per client.",
+          description: "200 means the observation can be performed now, and the body announces the verdict (supported | contradicted | incomplete) the paid receipt will be signed with, so the answer is known before paying — all three cost the same. 422 means it cannot be checked at all and is never billed: ssrf refusal, retrieve failure, empty page, a malformed assertion, an assertion naming a field the extract did not request, a document where none of the requested fields resolved (extract_none, indistinguishable from a page we failed to read, so never charged), or (with no assertion stated) missing extract fields. Never bills either way. Probes are rate-limited per client.",
           security: [],
           requestBody: body(quoteRequest, EXAMPLE),
           responses: {
