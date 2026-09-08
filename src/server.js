@@ -2,10 +2,11 @@ import express from "express";
 import { assertPublicHttps, SsrfError } from "./ssrf.js";
 import { evidenceSnippet, EXTRACT_SCHEMA, fillExtract, normalizeExtract } from "./extract.js";
 import { loadOrCreateKeystore } from "./keystore.js";
-import { evalAssertion, pubkeyB64, signReceipt, sourceHash, verifyReceipt } from "./receipt.js";
+import { pubkeyB64, signReceipt, sourceHash, verifyReceipt } from "./receipt.js";
+import { classifyVerdict } from "./evidence.js";
 import { appendObservation, compareReceipts, methodFromRequest, readObservations, specHash, VALID_FOR_MS } from "./observatory.js";
 import { renderStarMap } from "./star-map.js";
-import { funnelOutcome, funnelReason, funnelSpecHash, recordFunnel } from "./funnel.js";
+import { funnelOutcome, funnelReason, funnelSpecHash, funnelVerdict, recordFunnel } from "./funnel.js";
 import { paymentMiddleware } from "@x402/express";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { x402ResourceServer, HTTPFacilitatorClient } from "@x402/core/server";
@@ -60,6 +61,29 @@ function processKey(deps) {
   return deps.key ?? loadOrCreateKeystore(deps.keystoreDir);
 }
 
+/** What a caller can be charged for. `contradicted` and `incomplete` are answers
+ *  about the source -- the page does not say what you were told, or it never
+ *  carried the field -- and both cost the same as `supported`, which was always
+ *  the paid product. A request that states no assertion makes no claim, carries
+ *  verdict null, and bills exactly as it did before verdicts existed. */
+export const BILLABLE_VERDICTS = Object.freeze(["supported", "contradicted", "incomplete"]);
+
+/** Never billed, permanently. Two kinds live here and both must stay free: "we
+ *  could not check" (a malformed claim we cannot read) and every one of our own
+ *  defects (retrieval, parsing, wiring, crashes). Charging for either is the one
+ *  way paid non-supported verdicts become a scam, so this is a constant the
+ *  billing path reads -- not a comment describing an intention. */
+export const NEVER_BILLED = Object.freeze([
+  "unable_to_verify", "assertion_malformed", "assertion_field_not_extracted",
+  "evidence_mismatch", "verdict_mismatch",
+  "retrieve_failed", "retrieve_empty", "retrieve_not_wired",
+  "bad_json", "bad_extract", "bad_assertion", "replicas_unsupported",
+  "ssrf_refused", "server_error",
+]);
+
+/** The single billing decision, so quote and witness cannot answer it differently. */
+export const isBillable = (verdict) => verdict === null || BILLABLE_VERDICTS.includes(verdict);
+
 /** Change Proof: fail-closed prior validation before any retrieve. Returns a reason string or null. */
 function checkPrior(prior, publicKey, method) {
   if (!prior || typeof prior !== "object" || Array.isArray(prior)) return "prior_invalid";
@@ -106,20 +130,38 @@ export async function handleQuote(body, { retrieve, key, retrieval } = {}) {
     return { status: 422, json: { reason: "retrieve_failed" } };
   }
   if (!text) return { status: 422, json: { reason: "retrieve_empty" } };
-  const { values, missing } = fillExtract(text, extract);
-  if (missing.length) return { status: 422, json: { reason: "extract_missing", missing } };
-  if (!evalAssertion(values, body.assertion)) return { status: 422, json: { reason: "assertion_failed" } };
+  const filled = fillExtract(text, extract);
+  const { values, missing } = filled;
+  // One classification, on the retrieval this quote already performed. /witness
+  // consumes this rather than deriving its own, so what the caller is told they
+  // will get and what they pay for cannot disagree.
+  const classified = classifyVerdict(values, missing, body.assertion);
+  // A request with no assertion asks us to observe, not to check. That is not a
+  // failed verification -- it carries no verdict at all, and never reads supported.
+  const verdict = body.assertion == null ? null : classified.verdict;
+  // `incomplete` is an answer about a claim: the source did not carry what the
+  // claim needed. With no claim there is nothing for it to be incomplete about
+  // and nothing to sell, so a bare extract miss stays the free refusal it was.
+  if (verdict === null && missing.length) return { status: 422, json: { reason: "extract_missing", missing } };
+  if (!isBillable(verdict)) return { status: 422, json: { reason: classified.reason ?? "unable_to_verify" } };
+  const verdict_reason = verdict === null ? null : classified.reason ?? null;
+  // A quote is a price announcement, not a signed document: a request that made no
+  // claim gets no verdict field at all, so its body keeps the shape it always had.
+  // The signed receipt still carries an explicit null, where "no claim was made"
+  // must be readable and distinct from "the field is absent".
+  const announced = verdict === null ? {} : { verdict, verdict_reason };
+  if (verdict === "incomplete") announced.missing = classified.missing ?? [...missing];
+  const carry = { text, extract, values, missing, spans: filled.spans ?? {}, verdict, verdict_reason };
   if (priorInfo) {
     const source = sourceHash(text);
     return {
       status: 200,
-      json: { price_usdc: PRICE_USDC, replicas: replicas || 1, can_deliver: true, changed: source !== priorInfo.source_hash, previous_source_hash: priorInfo.source_hash, source_hash: source },
-      text,
-      extract,
+      json: { price_usdc: PRICE_USDC, replicas: replicas || 1, can_deliver: true, ...announced, changed: source !== priorInfo.source_hash, previous_source_hash: priorInfo.source_hash, source_hash: source },
+      ...carry,
       prior: priorInfo,
     };
   }
-  return { status: 200, json: { price_usdc: PRICE_USDC, replicas: replicas || 1, can_deliver: true }, text, extract };
+  return { status: 200, json: { price_usdc: PRICE_USDC, replicas: replicas || 1, can_deliver: true, ...announced }, ...carry };
 }
 
 /** Unpaid without deps.paid → 402. Signing only after explicit paid (x402 middleware or test). */
@@ -148,19 +190,43 @@ export async function handleWitness(body, deps = {}) {
     }
     if (!text) return { status: 422, json: { reason: "retrieve_empty" } };
   }
-  const { values, missing, spans } = fillExtract(text, q.extract);
-  if (missing.length) return { status: 422, json: { reason: "extract_missing", missing } };
-  if (!evalAssertion(values, body.assertion)) {
-    return { status: 422, json: { reason: "assertion_failed" } };
+  // Consume the quote's extraction and classification. Re-deriving here would
+  // let the issued receipt drift from the announced verdict on a source that
+  // changed between the two calls -- the caller would pay for a different answer
+  // than the one they were quoted.
+  let { values, spans, verdict, verdict_reason } = q;
+  if (values === undefined) {
+    const filled = fillExtract(text, q.extract);
+    if (filled.missing.length && body.assertion == null) return { status: 422, json: { reason: "extract_missing", missing: filled.missing } };
+    const c = classifyVerdict(filled.values, filled.missing, body.assertion);
+    verdict = body.assertion == null ? null : c.verdict;
+    if (!isBillable(verdict)) return { status: 422, json: { reason: c.reason ?? "unable_to_verify" } };
+    ({ values } = filled);
+    spans = filled.spans ?? {};
+    verdict_reason = verdict === null ? null : c.reason ?? null;
   }
   const observed_at = (deps.now ?? (() => new Date().toISOString()))();
   const method = methodFromRequest({ ...body, extract: q.extract }, deps.retrieval ?? "scrape");
+  const source_hash = sourceHash(text);
   const rest = {
     value: values,
     assertion: body.assertion ?? null,
     observed_at,
-    source_hash: sourceHash(text),
+    source_hash,
+    // Time-addressed evidence binding: source_hash covers the reader's
+    // plaintext derivation, not the origin bytes (which the reader hides).
+    // Origin fetch metadata stays null rather than implying what we saw.
+    requested_url: body.url,
+    final_url: null,
+    origin_status: null,
+    origin_content_type: null,
+    representation: { kind: "reader_plaintext", sha256: source_hash, retrieved_at: observed_at },
     evidence: evidenceSnippet(text, spans),
+    evidence_spans: JSON.parse(JSON.stringify(spans ?? {})),
+    // The verdict travels with the observation so no reader downstream -- the
+    // observatory, a star map, an agent -- can render a contradiction as a fact.
+    verdict: verdict ?? null,
+    verdict_reason: verdict_reason ?? null,
     agreement: "1-of-1",
     method,
     spec_hash: specHash(method),
@@ -199,8 +265,9 @@ export function createApp(deps = {}) {
     if (req.method !== "POST" || (req.path !== "/quote" && req.path !== "/witness")) return next();
     // Every reply (handlers, bad_json, 402 challenge) is written via res.json: read its enum reason there.
     let reason = null;
+    let verdict = null;
     const json = res.json.bind(res);
-    res.json = (body) => { reason = funnelReason(body); return json(body); };
+    res.json = (body) => { reason = funnelReason(body); verdict = funnelVerdict(body); return json(body); };
     res.on("finish", () => {
       try {
         const spec_hash = funnelSpecHash(req.body);
@@ -211,6 +278,9 @@ export function createApp(deps = {}) {
           outcome: funnelOutcome(req.path, res.statusCode),
           ...(spec_hash ? { spec_hash } : {}),
           ...(reason && res.statusCode >= 400 ? { reason } : {}),
+          // 2xx only: a paid contradiction must stay countable against the
+          // day-one numbers, and must never be tallied as a supported fact.
+          ...(verdict && res.statusCode < 400 ? { verdict } : {}),
         });
       } catch { /* funnel must never break the response path */ }
     });

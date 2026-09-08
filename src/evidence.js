@@ -63,8 +63,15 @@ export function classifyVerdict(values, missing, assertion) {
   // No claim cannot be a supported claim. It is an observation, not a verdict.
   if (parsed === null) return { verdict: "unable_to_verify", reason: "assertion_malformed" };
   if (parsed.kind === "absent") return { verdict: "unable_to_verify", reason: "assertion_absent" };
+  // A claim about a field the extract never requested is unanswerable by
+  // construction: we did not look, so we cannot report on it. That is "we could
+  // not check", which is free -- distinct from incomplete, which means we looked
+  // and the source did not carry it. The separation is what keeps a paid
+  // incomplete honest, and it is also the prototype guard: "constructor exists"
+  // names a field no extract requested, so it can never mint a receipt.
+  const requested = Object.hasOwn(values ?? {}, parsed.field) || (missing ?? []).includes(parsed.field);
+  if (!requested) return { verdict: "unable_to_verify", reason: "assertion_field_not_extracted" };
   if (missing && missing.length) return { verdict: "incomplete", reason: "extract_missing", missing: [...missing] };
-  // A claim about a field the extract never requested is unproven, not refuted.
   if (own(values, parsed.field) === undefined || own(values, parsed.field) === null)
     return { verdict: "incomplete", reason: "assertion_field_absent", missing: [parsed.field] };
   return evalAssertion(values, assertion)

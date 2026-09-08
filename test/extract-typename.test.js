@@ -47,7 +47,7 @@ test('nested dialect: {"type":"integer"} reads as number — rank 7 with "rank <
   assert.deepEqual(normalizeExtract({ rank: { type: "integer" } }), { rank: "number" });
   const body = { url: URL, extract: { rank: { type: "integer" } }, assertion: "rank < 100" };
   const q = await handleQuote(body, { retrieve });
-  assert.deepEqual([q.status, q.json], [200, { price_usdc: "0.01", replicas: 1, can_deliver: true }]);
+  assert.deepEqual([q.status, q.json], [200, { price_usdc: "0.01", replicas: 1, can_deliver: true, verdict: "supported", verdict_reason: null }]);
   const w = await handleWitness(body, { retrieve, paid: true, key: generateProcessKey() });
   assert.equal(w.status, 200);
   assert.strictEqual(w.json.value.rank, 7, 'the number 7, never the string "7"');

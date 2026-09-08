@@ -28,10 +28,36 @@ test("quote 200 when fixture html fills extract", async () => {
   assert.deepEqual(out.json, { price_usdc: "0.01", replicas: 1, can_deliver: true });
 });
 
-test("quote 422s assertion failures before payment", async () => {
+test("an assertion that does not hold is quoted as contradicted, not refused", async () => {
+  // The contract change: "the page does not say what you were told" is the answer
+  // the caller came for, so it is priced and announced before payment rather than
+  // returned as a bare 422 with no receipt.
   const out = await handleQuote({ ...BODY, assertion: "starter_price < 10" }, { retrieve: async () => ({ text: FIXTURE }) });
+  assert.equal(out.status, 200);
+  assert.equal(out.json.verdict, "contradicted");
+  assert.equal(out.json.can_deliver, true);
+  assert.equal(out.json.price_usdc, "0.01", "same price as any other verdict");
+});
+
+test("an unreadable claim is never priced -- unable_to_verify stays a free refusal", async () => {
+  const out = await handleQuote({ ...BODY, assertion: "starter_price ~~ cheap" }, { retrieve: async () => ({ text: FIXTURE }) });
   assert.equal(out.status, 422);
-  assert.equal(out.json.reason, "assertion_failed");
+  assert.equal(out.json.reason, "assertion_malformed");
+  assert.equal(out.json.price_usdc, undefined, "nothing is quoted for a claim we cannot read");
+});
+
+test("a claim whose field the source lacks is quoted as incomplete, and says which", async () => {
+  const out = await handleQuote({ url: BODY.url, extract: { nowhere: "number" }, assertion: "nowhere < 10" },
+    { retrieve: async () => ({ text: FIXTURE }) });
+  assert.equal(out.status, 200);
+  assert.equal(out.json.verdict, "incomplete");
+  assert.deepEqual(out.json.missing, ["nowhere"]);
+});
+
+test("with no claim at all, a bare extract miss is still the free refusal", async () => {
+  const out = await handleQuote({ url: BODY.url, extract: { nowhere: "number" } }, { retrieve: async () => ({ text: FIXTURE }) });
+  assert.equal(out.status, 422);
+  assert.equal(out.json.reason, "extract_missing");
 });
 
 test("scrape 422 does not call browse", async () => {

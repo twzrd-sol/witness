@@ -100,7 +100,7 @@ test("a handler that throws answers 500 internal_error and the process keeps ser
 test("'constructor exists' never signs: an inherited name is a failed assertion (422), not a receipt", async () => {
   for (const assertion of ["constructor exists", "toString exists", "valueOf exists"]) {
     const w = await handleWitness({ url: PAGE_URL, extract: { rank: "number" }, assertion }, { retrieve, paid: true, key: generateProcessKey() });
-    assert.deepEqual([w.status, w.json.reason, w.json.receipt], [422, "assertion_failed", undefined], assertion);
+    assert.deepEqual([w.status, w.json.reason, w.json.receipt], [422, "assertion_field_not_extracted", undefined], assertion);
   }
   assert.equal((await handleWitness({ url: PAGE_URL, extract: { rank: "number" }, assertion: "rank exists" }, { retrieve, paid: true, key: generateProcessKey() })).status, 200);
 });

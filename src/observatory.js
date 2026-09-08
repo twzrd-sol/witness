@@ -53,10 +53,17 @@ export function compareReceipts(results, publicKey, now = new Date()) {
     const active = all.filter((r) => +new Date(r.observed_at) <= at && at < +new Date(r.valid_until));
     const values = new Set(active.map((r) => canonical(r.value)));
     const vantages = new Set(active.map((r) => r.vantage));
+    // `state` describes agreement between observations, not whether the claim is
+    // true: a steady contradiction is a claim we consistently observe to be
+    // false. Surfacing the verdict keeps a star from reading as a confirmed fact.
+    // null covers receipts signed before verdicts existed; "mixed" is a group
+    // whose active receipts disagree, which the caller must not see as one answer.
+    const verdicts = new Set(active.map((r) => r.verdict ?? null));
+    const verdict = verdicts.size === 1 ? [...verdicts][0] : (verdicts.size ? "mixed" : null);
     let state = "steady";
     if (!active.length) state = "dim";
     else if (values.size > 1) state = vantages.size > 2 ? "unresolved" : "flare";
     else if (vantages.size > 1) state = "double";
-    return { spec_hash, question: spec_hash.slice(0, 16), state, active: active.length, total: all.length };
+    return { spec_hash, question: spec_hash.slice(0, 16), state, verdict, active: active.length, total: all.length };
   });
 }

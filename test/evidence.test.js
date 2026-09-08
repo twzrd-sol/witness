@@ -76,8 +76,12 @@ test("a malformed assertion cannot produce supported, and neither can no asserti
 
 test("absent evidence is incomplete, never contradicted -- missing is not fraud", () => {
   assert.equal(classifyVerdict({}, ["price"], "price < 10").verdict, "incomplete");
-  // The claim names a field the extract never requested: unproven, not refuted.
-  assert.equal(classifyVerdict({ title: "x" }, [], "price < 10").verdict, "incomplete");
+  // A claim naming a field no extract requested is unanswerable, and free: we
+  // never looked, so there is nothing to charge for.
+  assert.equal(classifyVerdict({ title: "x" }, [], "price < 10").verdict, "unable_to_verify");
+  assert.equal(classifyVerdict({ title: "x" }, [], "price < 10").reason, "assertion_field_not_extracted");
+  // But a field we did request and did not find is incomplete: we looked.
+  assert.equal(classifyVerdict({}, ["price"], "price < 10").verdict, "incomplete");
   assert.equal(classifyVerdict({ price: 9.99 }, [], "price < 10").verdict, "supported");
   assert.equal(classifyVerdict({ price: 49.99 }, [], "price < 10").verdict, "contradicted");
 });

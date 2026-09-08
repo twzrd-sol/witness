@@ -1,12 +1,14 @@
 import { appendFileSync, mkdirSync } from "node:fs";
 import path from "node:path";
+import { VERDICTS } from "./evidence.js";
 import { normalizeExtract } from "./extract.js";
 import { methodFromRequest, specHash } from "./observatory.js";
 
 /** Privacy-safe demand evidence: one append-only NDJSON line per POST /quote
  *  or POST /witness outcome. Fields: ts, route, status, outcome, the one-way
- *  spec_hash when the body names a valid method, and reason (the handler's
- *  fixed-vocabulary enum, e.g. bad_extract) on non-2xx rows. Never raw URL,
+ *  spec_hash when the body names a valid method, reason (the handler's
+ *  fixed-vocabulary enum, e.g. bad_extract) on non-2xx rows, and verdict on 2xx
+ *  rows so paid contradictions stay auditable and never read as supported. Never raw URL,
  *  extract values, evidence, IP, request/payment headers, payer, wallet, tx,
  *  or secrets. */
 export function recordFunnel(dir, event) {
@@ -28,6 +30,14 @@ export function funnelOutcome(route, status) {
 export function funnelReason(json) {
   const r = json && typeof json === "object" ? json.reason : undefined;
   return typeof r === "string" && /^[a-z][a-z0-9_]{0,63}$/.test(r) ? r : null;
+}
+
+/** The verdict on a 2xx row, admitted only from the closed vocabulary so the
+ *  funnel keeps its no-free-text guarantee. null covers both a request that made
+ *  no claim and every pre-verdict row already in the log. */
+export function funnelVerdict(json) {
+  const v = json && typeof json === "object" ? json.verdict : undefined;
+  return VERDICTS.includes(v) ? v : null;
 }
 
 export function funnelSpecHash(body) {

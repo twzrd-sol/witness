@@ -35,14 +35,20 @@ const LLMS = `# witness
 
 > Confirm a published price, a stock number, a release, a ranking, or that a public record is present — and get a signed, time-bounded receipt. $0.01 USDC over x402.
 
-- POST /quote — free deliverability probe. 200 = the observation can be performed now; 422 = not. Nothing is billed.
-- POST /witness — same body + x402 payment. Signed receipt: value, assertion, observed_at, source_hash, evidence, agreement, method, spec_hash, valid_until, vantage.
+- POST /quote — free deliverability probe. 200 = the observation can be performed now, and the body announces the verdict you will be issued; 422 = not. Nothing is billed either way.
+- POST /witness — same body + x402 payment. Signed receipt: value, assertion, verdict, observed_at, source_hash, evidence, agreement, method, spec_hash, valid_until, vantage.
+
+Verdicts. A 200 quote carries the verdict the receipt will be signed with, so you always know the answer before paying, and the price is the same for all of them:
+- supported — every field was found and the claim holds.
+- contradicted — every field was found and the claim does not hold. This is an answer, not an error: the source does not say what you were told.
+- incomplete — a field the claim needs was requested and the source did not carry it.
+A claim we cannot read is never priced: a malformed assertion, or one naming a field your extract did not request, is a free 422 (assertion_malformed, assertion_field_not_extracted). So is any failure on our side (retrieve_failed, retrieve_empty, bad_json, bad_extract, bad_assertion). Omit assertion for a bare extract and the receipt carries no verdict at all.
 - GET /pubkey — ed25519 key (receipts are signed over deep canonical JSON, 1h validity).
 - GET /observatory — verified receipts; contradictions and expiry are visible.
 - GET /.well-known/x402 — payment descriptor for POST /witness.
 - GET /openapi.json — OpenAPI 3.1 for POST /quote and POST /witness.
 
-Quote first. Only a 200 quote is worth paying.
+Quote first. A 200 quote is worth paying whatever verdict it announces — contradicted and incomplete are answers you asked for.
 - Change Proof: hold a prior receipt? POST /quote again with prior_receipt = that 200 body; the quote answers changed (true/false), previous_source_hash, and source_hash before you pay. Pay POST /witness with the same body for a signed delta receipt.
 
 Assertion grammar: "<key> <op> <literal>" — numeric ==, <, <=, >, >=; string == with quoted literals; "<key> exists". Omit assertion for a bare extract.
@@ -53,7 +59,7 @@ Default method — public ranking on https://outbid.sh/top:
 ${METHOD_DOC}
 \`\`\`
 
-Candidate methods (quote is free — a 200 means pay; a 422 means skip):
+Candidate methods (quote is free — a 200 announces the verdict and means pay; a 422 means we could not check, and skip):
 
 Published price (BTC-USD spot):
 
@@ -88,9 +94,11 @@ Pay $0.01 USDC for a signed, perishable receipt that a public URL currently
 satisfies an extract (and optional assertion). Agents buy the receipt, not HTML.
 
 1. \`POST /quote\` with one of the methods in \`GET /llms.txt\` — free.
-   200 \`{"can_deliver": true}\` means pay; 422 means do not.
+   200 \`{"can_deliver": true, "verdict": "supported|contradicted|incomplete"}\`
+   means pay, and names the verdict you will be issued. 422 means we could not
+   check — nothing is billed for it, ever.
 2. \`POST /witness\` same body + x402 (Base or Solana). Receipt fields:
-   value, assertion, observed_at, source_hash, evidence, agreement, method,
+   value, assertion, verdict, observed_at, source_hash, evidence, agreement, method,
    spec_hash, valid_until (1h), vantage.
 Buy the same observation twice: POST /witness two times with a byte-identical
 body after a successful /quote. Two $0.01 settlements, two receipts, one

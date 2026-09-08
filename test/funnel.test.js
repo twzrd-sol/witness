@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert";
+import { VERDICTS } from "../src/evidence.js";
 import { mkdtempSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -60,7 +61,10 @@ test("funnel log records outcomes with spec_hash and zero sensitive fields", asy
     assert.equal(events[0].spec_hash, events[2].spec_hash, "quote and 402 agree on the method");
     assert.deepEqual(events.map((e) => e.reason), [undefined, "bad_extract", undefined], "reason only on the error row; 200 and 402 carry none");
     for (const e of events) {
-      assert.deepEqual(Object.keys(e).sort(), ["outcome", "reason", "route", "spec_hash", "status", "ts"].filter((k) => k in e).sort(), "only whitelisted fields");
+      assert.deepEqual(Object.keys(e).sort(), ["outcome", "reason", "route", "spec_hash", "status", "ts", "verdict"].filter((k) => k in e).sort(), "only whitelisted fields");
+      // The verdict keeps the funnel's no-free-text guarantee: a closed
+      // vocabulary only, so paid contradictions stay countable and auditable.
+      if ("verdict" in e) assert.ok(VERDICTS.includes(e.verdict), `verdict outside the vocabulary: ${e.verdict}`);
       const raw = JSON.stringify(e);
       for (const forbidden of ["example.com", "starter_price", "x-payment", "payment-signature", "user-agent", "0x", "evidence", "http://", "https://"]) {
         assert.ok(!raw.includes(forbidden), `no sensitive material: ${forbidden}`);

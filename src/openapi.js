@@ -13,7 +13,7 @@ const quoteRequest = {
     url: { type: "string", format: "uri", description: "Public https URL to observe.", example: "https://outbid.sh/top" },
     extract: { ...EXTRACT_SCHEMA, description: 'Field name -> expected type the page must contain. Per key either the canonical "number" | "string", or the JSON-Schema spelling {"type": "number"|"string"|"integer"} (integer is read as number). Both spellings name the same method and share one spec_hash. Key-count and key-length bounds are in this schema; any other shape is 400 bad_extract.', example: { rank: "number" } },
     retrieval: { type: "string", enum: ["scrape"], description: 'Retrieval the host performs — "scrape" is the only mode. Optional; the canonical method always records "scrape".', example: "scrape" },
-    assertion: { ...ASSERTION_SCHEMA, description: 'Optional post-condition checked against extracted values, grammar "<key> <op> <literal>": numeric ==, <, <=, >, >= (e.g. "rank < 100"); string == with quoted literals (e.g. \'currency == "USD"\'); "<key> exists". Malformed or type-mismatched assertions fail (422) and nothing is billed. null (or omitted) means no assertion — a receipt method echoes null, so it round-trips as the next request body; any other non-string, or a string over maxLength, is 400 bad_assertion.', example: "rank < 100" },
+    assertion: { ...ASSERTION_SCHEMA, description: 'Optional post-condition checked against extracted values, grammar "<key> <op> <literal>": numeric ==, <, <=, >, >= (e.g. "rank < 100"); string == with quoted literals (e.g. \'currency == "USD"\'); "<key> exists". A claim that does not hold is not an error — it is answered as verdict "contradicted" and priced like any other. Free 422s, never billed: a malformed assertion (assertion_malformed) and one naming a field the extract did not request (assertion_field_not_extracted), because neither can be checked. null (or omitted) means no assertion — the receipt then carries no verdict, and the method echoes null so it round-trips as the next request body; any other non-string, or a string over maxLength, is 400 bad_assertion.', example: "rank < 100" },
     replicas: { type: "integer", enum: [1] },
     prior_receipt: { type: "object", description: "Optional Change Proof prior: a previous Witness 200 receipt body. Fail-closed checks (signature, source_hash, method, spec_hash) run before any retrieve; 422 prior_invalid/prior_method_mismatch never bills." },
   },
@@ -38,6 +38,8 @@ const badRequest = out('Malformed request — never billed. reason: "bad_json" (
   properties: {
     value: { type: "object" },
     assertion: { type: ["string", "null"], description: "Echoed post-condition; null when the request omitted it." },
+    verdict: { type: ["string", "null"], enum: ["supported", "contradicted", "incomplete", null], description: 'What the observation found. "supported": every field was found and the claim holds. "contradicted": every field was found and the claim does not hold — the source does not say what you were told. "incomplete": a field the claim needs was requested and the source did not carry it. null: the request stated no assertion, so no claim was checked; a receipt with no assertion never reads as supported. Inside the signature, and the same $0.01 whichever it is.' },
+    verdict_reason: { type: ["string", "null"], description: "Fixed-vocabulary detail behind a non-supported verdict (e.g. assertion_false, extract_missing); null when supported or when no claim was made." },
     observed_at: { type: "string", format: "date-time" },
     source_hash: { type: "string", description: "sha256 of the retrieved source text." },
     evidence: { type: "string", description: "Short cited snippet(s) around the extracted value(s), up to 160 characters." },
@@ -76,7 +78,7 @@ export function openapiDoc(env = process.env) {
       "/quote": {
         post: {
           summary: "Free deliverability probe",
-          description: "200 means the observation can be performed now; 422 means it cannot (ssrf refusal, retrieve failure, empty page, extract fields missing, or assertion failure). Never bills. Probes are rate-limited per client.",
+          description: "200 means the observation can be performed now, and the body announces the verdict (supported | contradicted | incomplete) the paid receipt will be signed with, so the answer is known before paying — all three cost the same. 422 means it cannot be checked at all and is never billed: ssrf refusal, retrieve failure, empty page, a malformed assertion, an assertion naming a field the extract did not request, or (with no assertion stated) missing extract fields. Never bills either way. Probes are rate-limited per client.",
           security: [],
           requestBody: body(quoteRequest, EXAMPLE),
           responses: {
@@ -131,7 +133,7 @@ export function openapiDoc(env = process.env) {
               } } },
             },
             "400": badRequest,
-            "422": out("Not deliverable or assertion failed — nothing billed"),
+            "422": out("Could not be checked — nothing billed. A claim that simply does not hold is a 200 with verdict contradicted, not a 422."),
           },
         },
       },
