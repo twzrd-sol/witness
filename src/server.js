@@ -304,7 +304,30 @@ export function createApp(deps = {}) {
     });
     next();
   });
-  app.use(express.json({ limit: "64kb" }));
+  // Dedicated body parser for /witness: catches parse errors and issues envelope.
+  app.post("/witness", (req, res, next) => {
+    express.json({ limit: "64kb" })(req, res, (err) => {
+      if (err && err.type === "entity.parse.failed") {
+        const accepts = witnessAccepts(deps.paywall);
+        return res.status(402).json({
+          x402Version: 2,
+          accepts,
+          resource: {
+            url: `${deps.publicBaseUrl || "https://witness.outbid.sh"}/witness`,
+            serviceName: "witness", tags: ["observation", "receipt", "x402", "empiricism"] },
+          extensions: deps.extensions || {},
+          error: "Payment required"
+        });
+      }
+      next();
+    });
+  });
+
+  // Standard body parser for all other routes.
+  app.use((req, res, next) => {
+    if (req.path === "/witness" && req.method === "POST") return next();
+    express.json({ limit: "64kb" })(req, res, next);
+  });
   const reply = (res, out) => res.status(out.status).json(out.json);
   // Express 4 drops a rejected async handler on the floor: the request hangs and the
   // process dies on the unhandled rejection. Route every rejection to the 500 handler.
