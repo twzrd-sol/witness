@@ -57,4 +57,4 @@ Inject a fake `retrieve(url)` in tests. Do not hit `reader.outbid.sh` in `npm te
 
 Intel `witness_agent_keys`. Outbid `/route` hop. Dashboards. ClawHub. Token.
 Permissionless workers. Merge Rescue. Veto. Cosigner. `LIVE_PAY` on mpp.
-≤150 LOC first increment: `/quote` + extract + ssrf + tests. Pay/sign next.
+First increment (no standing LOC cap): `/quote` + extract + ssrf + tests. Pay/sign next.

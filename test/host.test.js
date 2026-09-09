@@ -1,9 +1,15 @@
 import { test } from "node:test";
 import assert from "node:assert";
+import { mkdtempSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { createHostApp, readerPayment } from "../src/listen.js";
+import { fillExtract } from "../src/extract.js";
+import { evalAssertion } from "../src/receipt.js";
 
 async function withServer(env, fn, opts = {}) {
-  const server = createHostApp(env, opts).listen(0, "127.0.0.1");
+  const dir = env.OBSERVATIONS_DIR || mkdtempSync(path.join(os.tmpdir(), "wit-host-"));
+  const server = createHostApp({ ...env, OBSERVATIONS_DIR: dir }, opts).listen(0, "127.0.0.1");
   await new Promise((r) => server.once("listening", r));
   try { return await fn(`http://127.0.0.1:${server.address().port}`); }
   finally { await new Promise((r) => server.close(r)); }
@@ -22,7 +28,7 @@ test("discovery GETs: robots, llms, skill, well-knowns (200, no pay)", async () 
       const body = await doc.text();
       assert.match(body, /https:\/\/outbid\.sh\/top/, `${p} documents the observed URL`);
       assert.match(body, /0\.01/, `${p} states the price`);
-    assert.match(body, /twice/i, `${p} carries the twice-pay operator ask`);
+      assert.doesNotMatch(body, /twice-pay|Operator ask/i, `${p} does not ask strangers to fund our rail proof`);
     }
     const llms = await (await fetch(`${base}/llms.txt`)).text();
     assert.match(llms, /rank < 100/, "llms states the assertion grammar");
@@ -33,6 +39,23 @@ test("discovery GETs: robots, llms, skill, well-knowns (200, no pay)", async () 
     const skill = await (await fetch(`${base}/skill.md`)).text();
     assert.match(skill, /observatory/, "skill points at the receipt log");
     assert.match(skill, /published price/, "skill names customer jobs");
+
+    const blocks = [...llms.matchAll(/```json\n([\s\S]*?)```/g)].map((m) => JSON.parse(m[1]));
+    const fixtures = {
+      "https://outbid.sh/top": "# Top bidders\nrank: 1\n",
+      "https://api.coinbase.com/v2/prices/BTC-USD/spot": JSON.stringify({ data: { base: "BTC", currency: "USD", amount: "43125.67" } }),
+      "https://dummyjson.com/products/1": JSON.stringify({ id: 1, title: "Essence Mascara Lash", stock: 43 }),
+      "https://pypi.org/pypi/requests/json": JSON.stringify({ info: { version: "2.32.5" } }),
+      "https://jsonplaceholder.typicode.com/todos/1": JSON.stringify({ userId: 1, id: 1, title: "delectus aut autem" }),
+    };
+    assert.ok(blocks.length >= 5, "five method blocks documented");
+    for (const method of blocks) {
+      const fixture = fixtures[method.url];
+      assert.ok(fixture, `representative fixture for documented url ${method.url}`);
+      const { values, missing } = fillExtract(fixture, method.extract);
+      assert.deepEqual(missing, [], `${method.url} extract fills from its fixture — docs cannot outrun capability`);
+      if (method.assertion) assert.equal(evalAssertion(values, method.assertion), true, `${method.url} assertion holds on the fixture`);
+    }
 
     const x402 = await (await fetch(`${base}/.well-known/x402`)).json();
     assert.equal(x402.resource, "https://witness.outbid.sh/witness", "well-known resource is the canonical https URL");

@@ -4,7 +4,7 @@ import { mkdtempSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { generateProcessKey, verifyReceipt } from "../src/receipt.js";
-import { methodFromRequest, readObservations, specHash } from "../src/observatory.js";
+import { compareReceipts, methodFromRequest, readObservations, specHash } from "../src/observatory.js";
 import { createApp, handleWitness } from "../src/server.js";
 
 const FIXTURE = `<p>starter_price: $49/mo</p><p>currency: USD</p>`;
@@ -44,37 +44,81 @@ test("paid card appends; /observatory reads the log, not seeds", async () => {
     observationsDir: dir,
   });
   assert.equal(out.status, 200);
+  // Partial source: currency resolves, starter_price does not. That proves the
+  // extractor read the page, so the miss is the source's and the answer bills.
   const miss = await handleWitness(BODY, {
-    retrieve: async () => ({ text: "<p>hi</p>" }),
+    retrieve: async () => ({ text: "<p>currency: USD</p>" }),
     paid: true,
     key,
     now,
     observationsDir: dir,
   });
-  assert.equal(miss.status, 422);
-  assert.equal(readObservations(dir).length, 1, "422 must not append");
+  // A claim whose field the source lacks is now an answer, not a refusal: it is
+  // paid, it appends, and it carries its verdict so no reader can mistake it for
+  // a confirmed fact.
+  assert.equal(miss.status, 200);
+  assert.equal(miss.json.verdict, "incomplete");
+  const rows = readObservations(dir);
+  assert.equal(rows.length, 2, "a paid incomplete is an observation and appends");
+  assert.deepEqual(rows.map((r) => r.verdict), ["supported", "incomplete"]);
   const app = createApp({ key, retrieve: async () => ({ text: FIXTURE }), observationsDir: dir, now });
   const server = app.listen(0, "127.0.0.1");
   await new Promise((r) => server.once("listening", r));
-  const res = await fetch(`http://127.0.0.1:${server.address().port}/observatory`);
-  assert.equal(res.status, 200);
-  const html = await res.text();
-  assert.match(html, new RegExp(out.json.spec_hash.slice(0, 16)));
-  assert.match(html, /class="card steady"/);
-  assert.doesNotMatch(html, /What price is published/);
-  await new Promise((r) => server.close(r));
+  try {
+    const res = await fetch(`http://127.0.0.1:${server.address().port}/observatory`);
+    assert.equal(res.status, 200);
+    const html = await res.text();
+    assert.match(html, new RegExp(out.json.spec_hash.slice(0, 16)));
+    // Two observations of one method that do not agree: a supported reading and
+    // an incomplete one. The sky must show that disagreement, not a steady star.
+    assert.match(html, /class="card flare"/);
+    assert.doesNotMatch(html, /What price is published/);
+  } finally {
+    await new Promise((r) => server.close(r));
+  }
 });
 
-test("POST /witness 422 when extract cannot fill — no 402", async () => {
+test("a card never renders a non-supported group as one settled answer", async () => {
+  // Condition: the star map must carry the verdict end to end. A group whose
+  // active receipts disagree reads "mixed", never the supported one of the pair.
+  const key = generateProcessKey();
+  const dir = mkdtempSync(path.join(os.tmpdir(), "wit-v-"));
+  const now = () => "2026-08-30T00:00:00.000Z";
+  const deps = { paid: true, key, now, observationsDir: dir };
+  await handleWitness(BODY, { ...deps, retrieve: async () => ({ text: FIXTURE }) });
+  const cardsOne = compareReceipts(readObservations(dir), key.publicKey, new Date(now()));
+  assert.equal(cardsOne[0].verdict, "supported");
+
+  await handleWitness(BODY, { ...deps, retrieve: async () => ({ text: "<p>currency: USD</p>" }) });
+  const cards = compareReceipts(readObservations(dir), key.publicKey, new Date(now()));
+  assert.equal(cards.length, 1, "one method, one card");
+  assert.equal(cards[0].verdict, "mixed", "a disagreeing group must not read as supported");
+  assert.equal(cards[0].state, "flare");
+});
+
+test("a claim the source cannot answer is quoted, charged, and labelled incomplete", async () => {
+  const partial = async () => ({ text: "<p>currency: USD</p>" });
+  const out = await handleWitness(BODY, { retrieve: partial });
+  assert.equal(out.status, 402, "incomplete is a billable answer, so it reaches the paywall");
+  const paid = await handleWitness(BODY, { retrieve: partial, paid: true, key: generateProcessKey() });
+  assert.equal(paid.status, 200);
+  assert.equal(paid.json.verdict, "incomplete");
+  assert.deepEqual(paid.json.value, { currency: "USD" }, "the evidence we did find is still in the receipt");
+});
+
+test("a document where nothing resolved is not sold as incomplete", async () => {
+  // We cannot tell "the page lacks every field" from "our matcher read none of
+  // them", so this is free -- the guard against billing our own defects.
   const out = await handleWitness(BODY, { retrieve: async () => ({ text: "<p>hi</p>" }) });
+  assert.deepEqual([out.status, out.json.reason], [422, "extract_none"]);
+});
+
+test("with no claim, an extract miss still never reaches the paywall", async () => {
+  // Nothing was asked, so there is nothing incomplete and nothing to sell.
+  const { assertion, ...noClaim } = BODY;
+  const out = await handleWitness(noClaim, { retrieve: async () => ({ text: "<p>hi</p>" }) });
   assert.equal(out.status, 422);
   assert.equal(out.json.reason, "extract_missing");
-});
-
-test("POST /witness 422 when assertion fails — no 402", async () => {
-  const out = await handleWitness({ ...BODY, assertion: "starter_price < 10" }, { retrieve: async () => ({ text: FIXTURE }) });
-  assert.equal(out.status, 422);
-  assert.equal(out.json.reason, "assertion_failed");
 });
 
 test("POST /witness unpaid 402 after a deliverable quote", async () => {
@@ -85,7 +129,7 @@ test("POST /witness unpaid 402 after a deliverable quote", async () => {
 
 test("GET /pubkey", async () => {
   const key = generateProcessKey();
-  const app = createApp({ key, retrieve: async () => ({ text: FIXTURE }) });
+  const app = createApp({ key, retrieve: async () => ({ text: FIXTURE }), funnelDir: null });
   const server = app.listen(0, "127.0.0.1");
   await new Promise((r) => server.once("listening", r));
   const res = await fetch(`http://127.0.0.1:${server.address().port}/pubkey`);
@@ -109,6 +153,7 @@ test("paywall wired: unpaid deliverable → real x402 402 challenge, both rails"
   const app = createApp({
     key: generateProcessKey(),
     retrieve: async () => ({ text: FIXTURE }),
+    funnelDir: null,
     facilitator: fakeFacilitator,
     paywall: { evmAddress: "0xabc0000000000000000000000000000000000001", svmAddress: "F1AbWuXJcBT9arW9wc6Xr2vom5NBtngWsz6Ht16jRBLM" },
   });
@@ -134,6 +179,7 @@ test("paywall resource URL follows publicBaseUrl (PUBLIC_BASE_URL), never the re
   const app = createApp({
     key: generateProcessKey(),
     retrieve: async () => ({ text: FIXTURE }),
+    funnelDir: null,
     facilitator: fakeFacilitator,
     paywall: { svmAddress: "F1AbWuXJcBT9arW9wc6Xr2vom5NBtngWsz6Ht16jRBLM" },
     publicBaseUrl: "https://witness.example.net",
@@ -149,40 +195,33 @@ test("paywall resource URL follows publicBaseUrl (PUBLIC_BASE_URL), never the re
   await new Promise((r) => server.close(r));
 });
 
-test("paywall wired: extract miss → 422, the paywall never bills", async () => {
-  const app = createApp({
-    key: generateProcessKey(),
-    retrieve: async () => ({ text: "<p>hi</p>" }),
-    facilitator: fakeFacilitator,
-    paywall: { svmAddress: "F1AbWuXJcBT9arW9wc6Xr2vom5NBtngWsz6Ht16jRBLM" },
-  });
-  const server = app.listen(0, "127.0.0.1");
-  await new Promise((r) => server.once("listening", r));
-  const res = await fetch(`http://127.0.0.1:${server.address().port}/witness`, {
-    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(BODY),
-  });
-  assert.equal(res.status, 422);
-  assert.equal((await res.json()).reason, "extract_missing");
-  await new Promise((r) => server.close(r));
-});
-
-test("paywall wired: assertion fail → 422, the paywall never bills", async () => {
-  const app = createApp({
-    key: generateProcessKey(),
-    retrieve: async () => ({ text: FIXTURE }),
-    facilitator: fakeFacilitator,
-    paywall: { svmAddress: "F1AbWuXJcBT9arW9wc6Xr2vom5NBtngWsz6Ht16jRBLM" },
-  });
-  const server = app.listen(0, "127.0.0.1");
-  await new Promise((r) => server.once("listening", r));
-  const res = await fetch(`http://127.0.0.1:${server.address().port}/witness`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ ...BODY, assertion: "starter_price < 10" }),
-  });
-  assert.equal(res.status, 422);
-  assert.equal((await res.json()).reason, "assertion_failed");
-  await new Promise((r) => server.close(r));
+test("paywall wired: our own defects and unreadable claims never bill", async () => {
+  // The line the billing constant draws. A claim we cannot read, and a retrieval
+  // that failed on our side, are free 422s that never reach the challenge.
+  const cases = [
+    [{ ...BODY, assertion: "starter_price ~~ cheap" }, async () => ({ text: FIXTURE }), "assertion_malformed"],
+    [BODY, async () => { throw new Error("reader_503"); }, "retrieve_failed"],
+    [BODY, async () => ({ text: "" }), "retrieve_empty"],
+  ];
+  for (const [body, retrieve, reason] of cases) {
+    const app = createApp({
+      key: generateProcessKey(), retrieve, funnelDir: null, facilitator: fakeFacilitator,
+      paywall: { svmAddress: "F1AbWuXJcBT9arW9wc6Xr2vom5NBtngWsz6Ht16jRBLM" },
+    });
+    const server = app.listen(0, "127.0.0.1");
+    await new Promise((r) => server.once("listening", r));
+    try {
+      const res = await fetch(`http://127.0.0.1:${server.address().port}/witness`, {
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
+      });
+      assert.equal(res.status, 422, `${reason} must not be billed`);
+      assert.equal((await res.json()).reason, reason);
+    } finally {
+      // Close in a finally: a failed assertion here once leaked the listener and
+      // hung the whole file instead of reporting one red test.
+      await new Promise((r) => server.close(r));
+    }
+  }
 });
 
 test("paid witness reuses the quote retrieve — one scrape per observation", async () => {
@@ -203,6 +242,7 @@ test("GET /witness is crawlable discovery: 402 challenge, zero retrieve", async 
   const app = createApp({
     key: generateProcessKey(),
     retrieve: async () => { calls++; return { text: FIXTURE }; },
+    funnelDir: null,
     facilitator: fakeFacilitator,
     paywall: { evmAddress: "0xabc0000000000000000000000000000000000001", svmAddress: "F1AbWuXJcBT9arW9wc6Xr2vom5NBtngWsz6Ht16jRBLM" },
   });
@@ -224,18 +264,25 @@ test("GET /witness is crawlable discovery: 402 challenge, zero retrieve", async 
   }
 });
 
-test("malformed JSON body -> 400 bad_json, never 500", async () => {
-  const app = createApp({ key: generateProcessKey(), retrieve: async () => ({ text: FIXTURE }) });
+test("malformed JSON: /witness returns 402 challenge envelope, /quote teaches 400", async () => {
+  const app = createApp({ key: generateProcessKey(), retrieve: async () => ({ text: FIXTURE }), funnelDir: null });
   const server = app.listen(0, "127.0.0.1");
   await new Promise((r) => server.once("listening", r));
   try {
-    for (const path of ["/witness", "/quote"]) {
-      const res = await fetch(`http://127.0.0.1:${server.address().port}${path}`, {
-        method: "POST", headers: { "content-type": "application/json" }, body: "{not json",
-      });
-      assert.equal(res.status, 400, `${path} parse failure is a 400`);
-      assert.equal((await res.json()).reason, "bad_json");
-    }
+    // /witness: now always returns a 402 schema-valid envelope for any parse/bad extract errors
+    const witRes = await fetch(`http://127.0.0.1:${server.address().port}/witness`, {
+      method: "POST", headers: { "content-type": "application/json" }, body: "{not json",
+    });
+    assert.equal(witRes.status, 402, "/witness returns 402, not 400");
+    const witJ = await witRes.json();
+    assert.ok(witJ.x402Version === 2);
+    assert.ok(witJ.accepts);
+    // /quote: still 400+bad_json for parse errors
+    const quoteRes = await fetch(`http://127.0.0.1:${server.address().port}/quote`, {
+      method: "POST", headers: { "content-type": "application/json" }, body: "{not json",
+    });
+    assert.equal(quoteRes.status, 400);
+    assert.equal((await quoteRes.json()).reason, "bad_json");
   } finally {
     await new Promise((r) => server.close(r));
   }
@@ -301,6 +348,7 @@ test("paywall wired: unpaid deliverable still returns the x402 402 challenge", a
   const app = createApp({
     key: generateProcessKey(),
     retrieve: async () => ({ text: FIXTURE }),
+    funnelDir: null,
     facilitator: fakeFacilitator,
     paywall: { evmAddress: "0xabc0000000000000000000000000000000000001", svmAddress: "F1AbWuXJcBT9arW9wc6Xr2vom5NBtngWsz6Ht16jRBLM" },
   });

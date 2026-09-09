@@ -35,14 +35,23 @@ const LLMS = `# witness
 
 > Confirm a published price, a stock number, a release, a ranking, or that a public record is present — and get a signed, time-bounded receipt. $0.01 USDC over x402.
 
-- POST /quote — free deliverability probe. 200 = the observation can be performed now; 422 = not. Nothing is billed.
-- POST /witness — same body + x402 payment. Signed receipt: value, assertion, observed_at, source_hash, evidence, agreement, method, spec_hash, valid_until, vantage.
+- POST /quote — free deliverability probe. 200 = the observation can be performed now, and the body announces the verdict you will be issued; 422 = not. Nothing is billed either way.
+- POST /witness — same body + x402 payment. Signed receipt: value, assertion, verdict, observed_at, source_hash, evidence, agreement, method, spec_hash, valid_until, vantage.
+
+Verdicts. A 200 quote carries the verdict the receipt will be signed with, so you always know the answer before paying, and the price is the same for all of them:
+- supported — every field was found and the claim holds.
+- contradicted — every field was found and the claim does not hold. This is an answer, not an error: the source does not say what you were told.
+- incomplete — a field the claim needs was requested and the source did not carry it.
+A claim we cannot read is never priced: a malformed assertion, or one naming a field your extract did not request, is a free 422 (assertion_malformed, assertion_field_not_extracted). So is any failure on our side (retrieve_failed, retrieve_empty, bad_json, bad_extract, bad_assertion), and so is a document where none of your requested fields resolved (extract_none): we cannot tell a page that lacks them from one we failed to read, so you are not charged for it. incomplete is therefore only sold when some other requested field did resolve, proving we read the page. Omit assertion for a bare extract and the receipt carries no verdict at all.
 - GET /pubkey — ed25519 key (receipts are signed over deep canonical JSON, 1h validity).
 - GET /observatory — verified receipts; contradictions and expiry are visible.
 - GET /.well-known/x402 — payment descriptor for POST /witness.
 - GET /openapi.json — OpenAPI 3.1 for POST /quote and POST /witness.
 
-Quote first. Only a 200 quote is worth paying.
+Quote first. A 200 quote is worth paying whatever verdict it announces — contradicted and incomplete are answers you asked for.
+- Change Proof: hold a prior receipt? POST /quote again with prior_receipt = that 200 body; the quote answers changed (true/false), previous_source_hash, and source_hash before you pay. Pay POST /witness with the same body for a signed delta receipt.
+
+Assertion grammar: "<key> <op> <literal>" — numeric ==, <, <=, >, >=; string == with quoted literals; "<key> exists". Omit assertion for a bare extract.
 
 Default method — public ranking on https://outbid.sh/top:
 
@@ -50,7 +59,7 @@ Default method — public ranking on https://outbid.sh/top:
 ${METHOD_DOC}
 \`\`\`
 
-Candidate methods (quote is free — a 200 means pay; a 422 means skip):
+Candidate methods (quote is free — a 200 announces the verdict and means pay; a 422 means we could not check, and skip):
 
 Published price (BTC-USD spot):
 
@@ -76,13 +85,6 @@ Public record present (JSONPlaceholder todo #1):
 ${CLAIM}
 \`\`\`
 
-Operator ask — twice-pay proof:
-1. POST /quote with the same method body — free; must 200.
-2. POST /witness with the SAME body + x402 payment — twice. Same body, two payments ($0.02 ceiling).
-3. Keep both receipts + settlement IDs; verify via GET /pubkey and GET /observatory (total >= 2, same spec_hash).
-
-Assertion grammar: "<key> <op> <literal>" — numeric ==, <, <=, >, >=; string == with quoted literals; "<key> exists".
-
 Docs: /skill.md
 `;
 
@@ -92,18 +94,25 @@ Pay $0.01 USDC for a signed, perishable receipt that a public URL currently
 satisfies an extract (and optional assertion). Agents buy the receipt, not HTML.
 
 1. \`POST /quote\` with one of the methods in \`GET /llms.txt\` — free.
-   200 \`{"can_deliver": true}\` means pay; 422 means do not.
+   200 \`{"can_deliver": true, "verdict": "supported|contradicted|incomplete"}\`
+   means pay, and names the verdict you will be issued. 422 means we could not
+   check — nothing is billed for it, ever.
 2. \`POST /witness\` same body + x402 (Base or Solana). Receipt fields:
-   value, assertion, observed_at, source_hash, evidence, agreement, method,
+   value, assertion, verdict, observed_at, source_hash, evidence, agreement, method,
    spec_hash, valid_until (1h), vantage.
-
 Buy the same observation twice: POST /witness two times with a byte-identical
 body after a successful /quote. Two $0.01 settlements, two receipts, one
 spec_hash. Do not change url, extract, assertion, or replicas between pays.
+Do not attach prior_receipt on the first pair. A one-pay Change Proof delta
+is not two settlements. If /quote already returned 200, do not quote again.
+Do not POST empty. Send url, extract, assertion, replicas:1.
+Change Proof: already holding a receipt? Ask has this page changed since that
+observation: POST /quote again with prior_receipt set to the previous 200
+receipt body. The quote returns changed, previous_source_hash, and this
+retrieve's source_hash before any payment. Pay POST /witness with the same
+body only if you want the signed delta receipt (changed + previous_source_hash
+are bound inside the signature).
 
-The receipt binds the full method (url, retrieval, extract, assertion), so a second
-vantage can re-observe the same canonical observation and contradict it; \`GET /observatory\`
-renders every verified receipt logged by this host, with contradictions and expiry visible.
 Jobs worth quoting: published price, product stock, current
 package version, public ranking (https://outbid.sh/top), public record present.
 
@@ -142,7 +151,7 @@ export function createHostApp(env = process.env, { readerFetch } = {}) {
   app.get("/skill.md", (_q, res) => text(res, SKILL, "text/markdown"));
   app.get("/.well-known/x402", (_q, res) => res.json({
     resource: `${base}/witness`, description: "Independent fact + signed receipt. $0.01 USDC.",
-    x402Version: 2, price_usdc: "0.01", accepts: witnessAccepts(paywall),
+    x402Version: 2, price_usdc: "0.01", accepts: witnessAccepts(paywall).map((x) => ({ ...x, amount: "10000" })),
   }));
   const card = {
     name: "witness", url: base, version: "0.1.0",
@@ -154,6 +163,27 @@ export function createHostApp(env = process.env, { readerFetch } = {}) {
   return app;
 }
 
+/** Process-level backstop in two phases. Until the server is listening every failure
+ *  is fatal — log and exit 1 so systemd's Restart=on-failure retries in 3s (a swallowed
+ *  EADDRINUSE drains the loop and exits 0, which systemd reads as a clean stop: the
+ *  service stays down). Once listening, an unhandled rejection is logged and the process
+ *  keeps serving — one stray promise from a bad request must not take the paid endpoint
+ *  down. An uncaught exception exits 1 in both phases: Node guarantees nothing about the
+ *  process after one, and every request path is already routed to the 500 handler, so
+ *  whatever reaches here is outside any request; a 3s restart beats signing receipts
+ *  from an unknown state. Installed only by the entrypoint below, so a stray rejection
+ *  in tests still fails loudly. Returns the arming hook for the "listening" event. */
+export function installCrashGuard(proc = process, log = console.error) {
+  let listening = false;
+  const report = (kind, fatal) => (e) => {
+    log(`witness: ${kind}${fatal ? " — exiting 1 for systemd to restart" : ""}`, e && (e.stack || e.message || e));
+    if (fatal) proc.exit(1);
+  };
+  proc.on("unhandledRejection", (e) => report("unhandled rejection", !listening)(e));
+  proc.on("uncaughtException", report("uncaught exception", true));
+  return { listening: () => { listening = true; } };
+}
+
 export function start(env = process.env) {
   const host = env.HOST || "127.0.0.1";
   const port = Number(env.PORT || 4032);
@@ -161,4 +191,7 @@ export function start(env = process.env) {
   return server;
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) start();
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  const guard = installCrashGuard();
+  start().once("listening", guard.listening);
+}

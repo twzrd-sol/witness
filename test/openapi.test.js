@@ -1,6 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert";
 import { openapiDoc } from "../src/openapi.js";
+import { mkdtempSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { createHostApp } from "../src/listen.js";
 
 test("openapi contract: quote free, witness quote-first paid x402, canonical origin", async () => {
@@ -9,7 +12,7 @@ test("openapi contract: quote free, witness quote-first paid x402, canonical ori
   assert.equal(doc.openapi, "3.1.0");
 
   const q = doc.paths["/quote"].post;
-  assert.deepEqual(Object.keys(q.responses).sort(), ["200", "400", "422"]);
+  assert.deepEqual(Object.keys(q.responses).sort(), ["200", "400", "422", "429"]);
   assert.match(q.description, /Never bills/);
   assert.deepEqual(q.security, [], "quote is explicitly public — free, no auth requirement");
 
@@ -20,7 +23,7 @@ test("openapi contract: quote free, witness quote-first paid x402, canonical ori
   assert.equal(wreq.schema.properties.retrieval.type, "string");
   assert.deepEqual(wreq.schema.properties.retrieval.enum, ["scrape"], "retrieval is an enum (scrape only)");
   assert.equal(wreq.schema.properties.retrieval.example, "scrape");
-  assert.equal(wreq.schema.properties.assertion.type, "string");
+  assert.deepEqual(wreq.schema.properties.assertion.type, ["string", "null"], "assertion is string|null: null is the no-assertion path a receipt method echoes");
   assert.equal(wreq.schema.properties.assertion.example, "rank < 100");
   assert.deepEqual(wreq.example, { url: "https://outbid.sh/top", extract: { rank: "number" }, retrieval: "scrape", assertion: "rank < 100", replicas: 1 }, "witness example: outbid.sh/top rank method");
   assert.equal(wreq.schema.properties.url.example, "https://outbid.sh/top", "url property example — sampler composes a real probe, not placehold.co");
@@ -58,7 +61,7 @@ test("openapi contract: quote free, witness quote-first paid x402, canonical ori
 });
 
 test("GET /openapi.json serves the doc on the host surface", async () => {
-  const server = createHostApp({}).listen(0, "127.0.0.1");
+  const server = createHostApp({ OBSERVATIONS_DIR: mkdtempSync(path.join(os.tmpdir(), "wit-oa-")) }).listen(0, "127.0.0.1");
   await new Promise((r) => server.once("listening", r));
   try {
     const res = await fetch(`http://127.0.0.1:${server.address().port}/openapi.json`);

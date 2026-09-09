@@ -27,7 +27,18 @@
   "experiments": [
     { "id": "design-partners", "sample": 10, "instruction": "Give each agent one job card; ask it to quote first and pay only after a deliverable response." },
     { "id": "repeat-proof", "sample": 3, "instruction": "Invite prior users to run the same method again without reimbursement." },
-    { "id": "sponsored-pilot", "sample": 3, "instruction": "If reimbursing a named participant, label it sponsorship and keep it separate from organic demand." }
+    { "id": "sponsored-pilot", "sample": 3, "instruction": "If reimbursing a named participant, label it sponsorship and keep it separate from organic demand." },
+    {
+      "id": "shopping-preapproval",
+      "sample": 5,
+      "instruction": "Recruit shopping and task agents that gate checkout on user approval. Have the agent quote the public item price first, settle POST /witness only on a 200 deliverable quote, and attach the signed receipt before prompting user approval.",
+      "harness": "scripts/shopping-preapproval.mjs --mode=dry|live --keypair=... ; every run appends data/preapproval.ndjson with the payer identity",
+      "success_criteria": {
+        "paid_quotes": "wallet pays for observation only after a 200 quote confirms deliverable price",
+        "repeat_use": "at least one independent shopping agent wallet returns to pay twice across distinct tasks without reimbursement",
+        "downstream_decision": "signed receipt gates user checkout approval or aborts on price assertion failure"
+      }
+    }
   ],
   "success": {
     "rail": "one independently controlled wallet pays twice",
