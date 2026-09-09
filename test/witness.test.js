@@ -264,25 +264,18 @@ test("GET /witness is crawlable discovery: 402 challenge, zero retrieve", async 
   }
 });
 
-test("malformed JSON: /witness returns 402 challenge envelope, /quote teaches 400", async () => {
+test("malformed JSON body -> 400 bad_json, never 500", async () => {
   const app = createApp({ key: generateProcessKey(), retrieve: async () => ({ text: FIXTURE }), funnelDir: null });
   const server = app.listen(0, "127.0.0.1");
   await new Promise((r) => server.once("listening", r));
   try {
-    // /witness: now always returns a 402 schema-valid envelope for any parse/bad extract errors
-    const witRes = await fetch(`http://127.0.0.1:${server.address().port}/witness`, {
-      method: "POST", headers: { "content-type": "application/json" }, body: "{not json",
-    });
-    assert.equal(witRes.status, 402, "/witness returns 402, not 400");
-    const witJ = await witRes.json();
-    assert.ok(witJ.x402Version === 2);
-    assert.ok(witJ.accepts);
-    // /quote: still 400+bad_json for parse errors
-    const quoteRes = await fetch(`http://127.0.0.1:${server.address().port}/quote`, {
-      method: "POST", headers: { "content-type": "application/json" }, body: "{not json",
-    });
-    assert.equal(quoteRes.status, 400);
-    assert.equal((await quoteRes.json()).reason, "bad_json");
+    for (const path of ["/witness", "/quote"]) {
+      const res = await fetch(`http://127.0.0.1:${server.address().port}${path}`, {
+        method: "POST", headers: { "content-type": "application/json" }, body: "{not json",
+      });
+      assert.equal(res.status, 400, `${path} parse failure is a 400`);
+      assert.equal((await res.json()).reason, "bad_json");
+    }
   } finally {
     await new Promise((r) => server.close(r));
   }
