@@ -22,6 +22,7 @@ import { createRequire } from "node:module";
 import { appendFileSync, mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { verifyReceipt } from "../src/receipt.js";
 
 const require = createRequire(import.meta.url);
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -44,6 +45,16 @@ export function decideGate(receipt) {
   if (verdict === "supported") return { approve: true, reason: "verdict_supported" };
   if (typeof verdict === "string" && verdict.length > 0) return { approve: false, reason: `verdict_${verdict}` };
   return { approve: false, reason: "verdict_missing" };
+}
+
+/** Verify a receipt against the b64 pubkey exactly as /pubkey serves it.
+ *  Returns false on any malformed input — never throws. */
+export function verifyAgainstPubkeyB64(receipt, pubkeyB64) {
+  try {
+    return verifyReceipt(receipt, createPublicKeyFromB64(pubkeyB64)) === true;
+  } catch {
+    return false;
+  }
 }
 
 /** One run. mode: "dry" | "live". Returns a step record; never throws on remote failure. */
@@ -103,21 +114,12 @@ export async function runOnce({ base, mode, keypairPath, log = () => {} }) {
 
   // Step 3: the checkout gates only on a signature-verifiable receipt.
   const pubRes = await fetch(`${base}/pubkey`);
-  const { publicKeyFromB64 } = require("../src/receipt.js");
-  const verifyReceipt = (doc, key) => {
-    try {
-      return publicKeyFromB64 !== undefined && require("../src/receipt.js").verifyReceipt(doc, key);
-    } catch {
-      return false;
-    }
-  };
-  let pub;
+  let verified = false;
   try {
-    pub = createPublicKeyFromB64((await pubRes.json()).publicKey);
+    verified = verifyAgainstPubkeyB64(receipt, (await pubRes.json()).pubkey);
   } catch {
-    return { ...run, decision: { approve: false, reason: "pubkey_unreadable" }, approve: false };
+    verified = false;
   }
-  const verified = verifyReceipt(receipt, pub);
   const gate = verified ? decideGate(receipt) : { approve: false, reason: "signature_invalid" };
   return { ...run, receipt_verified: verified, decision: gate, approve: gate.approve };
 }

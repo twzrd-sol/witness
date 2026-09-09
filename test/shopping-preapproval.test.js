@@ -3,7 +3,7 @@ import assert from "node:assert";
 import { mkdtempSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { generateProcessKey, verifyReceipt } from "../src/receipt.js";
+import { generateProcessKey, pubkeyB64, verifyReceipt } from "../src/receipt.js";
 import { createApp, handleWitness } from "../src/server.js";
 import { decideGate, GATE_METHOD } from "../scripts/shopping-preapproval.mjs";
 
@@ -89,4 +89,21 @@ test("paid run: settles only on a deliverable quote and gates on a signature-ver
 });
 
 // Local imports are declared last so the RED phase fails here, not above.
-import { runOnce } from "../scripts/shopping-preapproval.mjs";
+import { runOnce, verifyAgainstPubkeyB64 } from "../scripts/shopping-preapproval.mjs";
+
+test("live verification path: signature-verifiable receipt from /pubkey-shaped b64 gates; tamper blocks", async () => {
+  const key = generateProcessKey();
+  const now = () => "2026-09-08T23:00:00.000Z";
+  const out = await handleWitness(GATE_METHOD, {
+    retrieve: async () => ({ text: "<p>price: $5.99</p>" }),
+    paid: true,
+    key,
+    now,
+  });
+  assert.equal(out.status, 200);
+  const b64 = pubkeyB64(key);
+  assert.equal(verifyAgainstPubkeyB64(out.json, b64), true, "the exact live-path helper verifies the real receipt");
+  assert.equal(verifyAgainstPubkeyB64({ ...out.json, value: { price: 1 } }, b64), false, "tampered value fails");
+  assert.equal(verifyAgainstPubkeyB64({}, b64), false, "empty doc fails");
+  assert.equal(verifyAgainstPubkeyB64(out.json, "not-base64!"), false, "malformed pubkey fails closed");
+});
