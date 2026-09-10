@@ -48,8 +48,11 @@ test("discovery GETs: robots, llms, skill, well-knowns (200, no pay)", async () 
       "https://pypi.org/pypi/requests/json": JSON.stringify({ info: { version: "2.32.5" } }),
       "https://jsonplaceholder.typicode.com/todos/1": JSON.stringify({ userId: 1, id: 1, title: "delectus aut autem" }),
     };
-    assert.ok(blocks.length >= 5, "five method blocks documented");
-    for (const method of blocks) {
+    const observationBlocks = blocks.filter((m) => m.url && m.extract);
+    assert.ok(observationBlocks.length >= 5, "five method blocks documented");
+    assert.match(llms, /\/verify\/payout/, "llms documents payout-claim verification");
+    assert.ok(blocks.some((m) => m.claim_url && m.claim && m.wallet), "llms carries a payout-claim example distinct from observation methods");
+    for (const method of observationBlocks) {
       const fixture = fixtures[method.url];
       assert.ok(fixture, `representative fixture for documented url ${method.url}`);
       const { values, missing } = fillExtract(fixture, method.extract);
