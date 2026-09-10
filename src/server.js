@@ -7,6 +7,7 @@ import { buildEvidenceBundle, classifyVerdict } from "./evidence.js";
 import { appendObservation, compareReceipts, methodFromRequest, readObservations, specHash, VALID_FOR_MS } from "./observatory.js";
 import { renderStarMap } from "./star-map.js";
 import { funnelOutcome, funnelReason, funnelSpecHash, funnelVerdict, recordFunnel } from "./funnel.js";
+import { createOffersRouter } from "./routes/offers.js";
 import { paymentMiddleware } from "@x402/express";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { x402ResourceServer, HTTPFacilitatorClient } from "@x402/core/server";
@@ -329,6 +330,8 @@ export function createApp(deps = {}) {
     express.json({ limit: "64kb" })(req, res, next);
   });
   const reply = (res, out) => res.status(out.status).json(out.json);
+  // Consumer offers: catalog, cart, and merchant-hosted checkout URL.
+  app.use(createOffersRouter());
   // Express 4 drops a rejected async handler on the floor: the request hangs and the
   // process dies on the unhandled rejection. Route every rejection to the 500 handler.
   const guard = (fn) => (req, res, next) => fn(req, res, next).catch(next);
