@@ -1,0 +1,75 @@
+{
+  "schema_version": "bounty-completion/v1",
+  "id": "6ad4dcb1-e420-4fbb-8371-fde1ce083c62",
+  "bounty_id": "4bb07a1e-09c5-4a59-befd-4df7768078ec",
+  "mode": "internal_fixture",
+  "key_id": "74bada4508f9426aaca1cee8cafa7de4a6cae2ccae5ee47c659e7eb800d70852",
+  "task_sha256": "f93ea307dad4c55fa852bfdc76f8eacf6398fede77d4aaa6ca2aa2686c6b16f8",
+  "poster": {
+    "schema_version": "seller-offer/v1",
+    "seller_id": "poster",
+    "capability": "TWZRD backlog work",
+    "price_minor": 500000,
+    "currency": "USDC",
+    "network": "base",
+    "payout_wallet": "0x0000000000000000000000000000000000000001",
+    "sla_minutes": 60,
+    "deliverable": {
+      "description": "Reviewed Markdown artifact",
+      "mime_type": "text/markdown"
+    }
+  },
+  "claimer": {
+    "schema_version": "seller-offer/v1",
+    "seller_id": "claimer",
+    "capability": "TWZRD backlog work",
+    "price_minor": 500000,
+    "currency": "USDC",
+    "network": "base",
+    "payout_wallet": "0x0000000000000000000000000000000000000002",
+    "sla_minutes": 60,
+    "deliverable": {
+      "description": "Reviewed Markdown artifact",
+      "mime_type": "text/markdown"
+    }
+  },
+  "reward_minor": 500000,
+  "currency": "USDC",
+  "artifact": {
+    "sha256": "756cfc32e9a74846ca8bc886ffe89fed005b23157e920408d74426b6dccc982c",
+    "description": "seller-error-contract.md"
+  },
+  "outcome": {
+    "decision": "accepted",
+    "completed_at": "2026-09-10T17:53:43.342Z",
+    "delivery_minutes": 0.00008333333333333333,
+    "accepted_by": "poster"
+  },
+  "preflight": {
+    "request": {
+      "resource_name": "bounty:4bb07a1e-09c5-4a59-befd-4df7768078ec",
+      "seller_wallet": "0x0000000000000000000000000000000000000002",
+      "price_usdc": 0.5,
+      "chain": "base",
+      "agent_intent": "completion payout eligibility (no transfer)"
+    },
+    "response": {
+      "readiness_card": {
+        "decision": "allow",
+        "can_spend": true,
+        "seller_wallet": "0x0000000000000000000000000000000000000002",
+        "chain": "base",
+        "price_usdc": 0.5
+      },
+      "fixture": true
+    },
+    "checked_at": "2026-09-10T17:53:43.342Z",
+    "mode": "internal_fixture"
+  },
+  "settlement": {
+    "status": "not_paid",
+    "reason": "settlement_adapter_not_configured",
+    "transaction": null
+  },
+  "receipt": "YJP0VeTEVO6XB1F09PbmQAisRAoDg2mZo4RraGvJrISgtLou5p8KSNdzL3ManiJev8uMYwgoQR02ETFEH/RGAQ=="
+}

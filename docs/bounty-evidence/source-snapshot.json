@@ -1,0 +1,18 @@
+{
+  "package-lock.json": "b14ab36974f9cb5ebe58a40a901e791e16695ba83c8872ce814081c4c953c2cd",
+  "package.json": "451285665f74ed8d19930a5eb43943915f62d99441b2982838c42e3ea1dfbb80",
+  "src/listen.js": "1041db30ece4eb7f516d3347ee69d6d2a4b0474137bc9ea46cba83168a01287b",
+  "src/openapi.js": "e626a4fb6d227defdbe5346a7e9d78c01320b36b191060dfb45e7b6fee479c84",
+  "src/server.js": "0624deef2fb9153a9c4a805598d938d658839ce1de50f041fdd8f211fc4ec232",
+  "test/openapi.test.js": "4256cd76b24d37d90e4bb52859d8bce0b88255dc1352d07c8ceece4685ef8ed0",
+  "src/seller.js": "80e5caf198831c5517a068d3183e5323da65ececda665a2eb94b848a1680b09c",
+  "src/routes/seller.js": "a63ed6dbe57aa1c5d8986bd4696d9b03547f79d61089c66ac7da4471d121b3ef",
+  "src/bounties.js": "5acf46bd2381b049555b22591406c432d75166f76e1ce7ad8d1673392bd9748c",
+  "src/routes/bounties.js": "2c1940a5890099499bf836619ba8f00f45cfbd8251d3fc6797cb7e87ec790bc5",
+  "src/discovery.js": "0631e06559a67c855efb9c8b9a1b8a9dc9b58ffe4abca73d60ad87473dafe5ed",
+  "src/mcp.js": "428f8139434220598e95186c9ec19c7ae9703b41862ec1748bdecb38e2362dcd",
+  "test/seller.test.js": "2bb21363238b0794e88212241b2ffd8647e2af23461e080c612dae3d21f407c6",
+  "test/seller-route.test.js": "7cceff3f42c1031ed8d38fc79ab06dc07db84823a5d93961dd3dcadce80c3afa",
+  "test/mcp.test.js": "9076e6747dede4da7e48df898cd328e4d8e062a50d3fc6113eb8a0a5e0010cb8",
+  "test/mcp-probe.test.js": "18a8088865f9559c058747a2863ce29880ad4fe6ba75b2b5043cbc534c46b0cb"
+}

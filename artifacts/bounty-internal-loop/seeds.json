@@ -1,0 +1,254 @@
+{
+  "mode": "internal_fixture",
+  "funded": false,
+  "tasks": [
+    {
+      "description": "Document the seller HTTP error taxonomy, including malformed JSON versus wrong-shape offers.",
+      "reward_minor": 500000,
+      "source": "src/routes/seller.js; src/server.js; test/seller-route.test.js"
+    },
+    {
+      "description": "Verify an Ed25519 Witness receipt offline and demonstrate that nested-field tampering fails verification.",
+      "reward_minor": 1000000,
+      "source": "src/receipt.js; test/server.test.js"
+    },
+    {
+      "description": "Write a quote-then-witness client guide covering refused quotes, 402 challenges, failed retrieval and receipt verification.",
+      "reward_minor": 2000000,
+      "source": "README.md; src/server.js; docs/operator-trial.md"
+    }
+  ],
+  "posted": [
+    {
+      "id": "4bb07a1e-09c5-4a59-befd-4df7768078ec",
+      "status": "open",
+      "mode": "internal_fixture",
+      "task": {
+        "description": "Document the seller HTTP error taxonomy, including malformed JSON versus wrong-shape offers."
+      },
+      "reward_minor": 500000,
+      "currency": "USDC",
+      "poster": {
+        "schema_version": "seller-offer/v1",
+        "seller_id": "poster",
+        "capability": "TWZRD backlog work",
+        "price_minor": 500000,
+        "currency": "USDC",
+        "network": "base",
+        "payout_wallet": "0x0000000000000000000000000000000000000001",
+        "sla_minutes": 60,
+        "deliverable": {
+          "description": "Reviewed Markdown artifact",
+          "mime_type": "text/markdown"
+        }
+      },
+      "poster_card": {
+        "schema_version": "seller-card/v1",
+        "seller_id": "poster",
+        "payout_wallet": "0x0000000000000000000000000000000000000001",
+        "capability": "TWZRD backlog work",
+        "price_usdc": "0.500000",
+        "currency": "USDC",
+        "network": "base",
+        "sla_minutes": 60,
+        "deliverable": {
+          "description": "Reviewed Markdown artifact",
+          "mime_type": "text/markdown"
+        },
+        "outcomes": {
+          "completed_jobs": 0,
+          "accepted_jobs": 0,
+          "approval_rate": null,
+          "refunded_jobs": 0,
+          "refund_rate": null,
+          "median_delivery_minutes": null
+        },
+        "evidence_url": null,
+        "evidence_status": "none"
+      },
+      "payment_history": {
+        "paid_jobs": null,
+        "payment_rate": null
+      },
+      "preflight": {
+        "request": {
+          "resource_name": "bounty:4bb07a1e-09c5-4a59-befd-4df7768078ec",
+          "seller_wallet": "0x0000000000000000000000000000000000000001",
+          "price_usdc": 0.5,
+          "chain": "base",
+          "agent_intent": "list bounty"
+        },
+        "response": {
+          "readiness_card": {
+            "decision": "allow",
+            "can_spend": true,
+            "seller_wallet": "0x0000000000000000000000000000000000000001",
+            "chain": "base",
+            "price_usdc": 0.5
+          },
+          "fixture": true
+        },
+        "checked_at": "2026-09-10T17:53:43.321Z",
+        "mode": "internal_fixture"
+      },
+      "claim": null,
+      "outcome": null,
+      "completion_receipt": null,
+      "created_at": "2026-09-10T17:53:43.321Z"
+    },
+    {
+      "id": "ff86e14a-4701-45ab-a45f-7fe64852497c",
+      "status": "open",
+      "mode": "internal_fixture",
+      "task": {
+        "description": "Verify an Ed25519 Witness receipt offline and demonstrate that nested-field tampering fails verification."
+      },
+      "reward_minor": 1000000,
+      "currency": "USDC",
+      "poster": {
+        "schema_version": "seller-offer/v1",
+        "seller_id": "poster",
+        "capability": "TWZRD backlog work",
+        "price_minor": 1000000,
+        "currency": "USDC",
+        "network": "base",
+        "payout_wallet": "0x0000000000000000000000000000000000000001",
+        "sla_minutes": 60,
+        "deliverable": {
+          "description": "Reviewed Markdown artifact",
+          "mime_type": "text/markdown"
+        }
+      },
+      "poster_card": {
+        "schema_version": "seller-card/v1",
+        "seller_id": "poster",
+        "payout_wallet": "0x0000000000000000000000000000000000000001",
+        "capability": "TWZRD backlog work",
+        "price_usdc": "1.000000",
+        "currency": "USDC",
+        "network": "base",
+        "sla_minutes": 60,
+        "deliverable": {
+          "description": "Reviewed Markdown artifact",
+          "mime_type": "text/markdown"
+        },
+        "outcomes": {
+          "completed_jobs": 0,
+          "accepted_jobs": 0,
+          "approval_rate": null,
+          "refunded_jobs": 0,
+          "refund_rate": null,
+          "median_delivery_minutes": null
+        },
+        "evidence_url": null,
+        "evidence_status": "none"
+      },
+      "payment_history": {
+        "paid_jobs": null,
+        "payment_rate": null
+      },
+      "preflight": {
+        "request": {
+          "resource_name": "bounty:ff86e14a-4701-45ab-a45f-7fe64852497c",
+          "seller_wallet": "0x0000000000000000000000000000000000000001",
+          "price_usdc": 1,
+          "chain": "base",
+          "agent_intent": "list bounty"
+        },
+        "response": {
+          "readiness_card": {
+            "decision": "allow",
+            "can_spend": true,
+            "seller_wallet": "0x0000000000000000000000000000000000000001",
+            "chain": "base",
+            "price_usdc": 1
+          },
+          "fixture": true
+        },
+        "checked_at": "2026-09-10T17:53:43.328Z",
+        "mode": "internal_fixture"
+      },
+      "claim": null,
+      "outcome": null,
+      "completion_receipt": null,
+      "created_at": "2026-09-10T17:53:43.328Z"
+    },
+    {
+      "id": "4db61592-01ae-4d5d-a3c2-2819ad06e96c",
+      "status": "open",
+      "mode": "internal_fixture",
+      "task": {
+        "description": "Write a quote-then-witness client guide covering refused quotes, 402 challenges, failed retrieval and receipt verification."
+      },
+      "reward_minor": 2000000,
+      "currency": "USDC",
+      "poster": {
+        "schema_version": "seller-offer/v1",
+        "seller_id": "poster",
+        "capability": "TWZRD backlog work",
+        "price_minor": 2000000,
+        "currency": "USDC",
+        "network": "base",
+        "payout_wallet": "0x0000000000000000000000000000000000000001",
+        "sla_minutes": 60,
+        "deliverable": {
+          "description": "Reviewed Markdown artifact",
+          "mime_type": "text/markdown"
+        }
+      },
+      "poster_card": {
+        "schema_version": "seller-card/v1",
+        "seller_id": "poster",
+        "payout_wallet": "0x0000000000000000000000000000000000000001",
+        "capability": "TWZRD backlog work",
+        "price_usdc": "2.000000",
+        "currency": "USDC",
+        "network": "base",
+        "sla_minutes": 60,
+        "deliverable": {
+          "description": "Reviewed Markdown artifact",
+          "mime_type": "text/markdown"
+        },
+        "outcomes": {
+          "completed_jobs": 0,
+          "accepted_jobs": 0,
+          "approval_rate": null,
+          "refunded_jobs": 0,
+          "refund_rate": null,
+          "median_delivery_minutes": null
+        },
+        "evidence_url": null,
+        "evidence_status": "none"
+      },
+      "payment_history": {
+        "paid_jobs": null,
+        "payment_rate": null
+      },
+      "preflight": {
+        "request": {
+          "resource_name": "bounty:4db61592-01ae-4d5d-a3c2-2819ad06e96c",
+          "seller_wallet": "0x0000000000000000000000000000000000000001",
+          "price_usdc": 2,
+          "chain": "base",
+          "agent_intent": "list bounty"
+        },
+        "response": {
+          "readiness_card": {
+            "decision": "allow",
+            "can_spend": true,
+            "seller_wallet": "0x0000000000000000000000000000000000000001",
+            "chain": "base",
+            "price_usdc": 2
+          },
+          "fixture": true
+        },
+        "checked_at": "2026-09-10T17:53:43.333Z",
+        "mode": "internal_fixture"
+      },
+      "claim": null,
+      "outcome": null,
+      "completion_receipt": null,
+      "created_at": "2026-09-10T17:53:43.333Z"
+    }
+  ]
+}

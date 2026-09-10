@@ -7,6 +7,8 @@ import { buildEvidenceBundle, classifyVerdict } from "./evidence.js";
 import { appendObservation, compareReceipts, methodFromRequest, readObservations, specHash, VALID_FOR_MS } from "./observatory.js";
 import { renderStarMap } from "./star-map.js";
 import { funnelOutcome, funnelReason, funnelSpecHash, funnelVerdict, recordFunnel } from "./funnel.js";
+import { createSellerRouter } from "./routes/seller.js";
+import { createBountiesRouter } from "./routes/bounties.js";
 import { paymentMiddleware } from "@x402/express";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { x402ResourceServer, HTTPFacilitatorClient } from "@x402/core/server";
@@ -326,9 +328,17 @@ export function createApp(deps = {}) {
   // Standard body parser for all other routes.
   app.use((req, res, next) => {
     if (req.path === "/witness" && req.method === "POST") return next();
-    express.json({ limit: "64kb" })(req, res, next);
+    express.json({ limit: "64kb", strict: !req.path.startsWith("/seller/") })(req, res, next);
   });
   const reply = (res, out) => res.status(out.status).json(out.json);
+  // Seller card surface: pure validation + card over the request body (no
+  // registry, no persistence, never billed). Standalone router so the
+  // contract lives in one module; mounted here on the existing app.
+  app.use(createSellerRouter());
+  // Bounty coordination pilot (operator override 2026-09-10): API-only
+  // post/claim/complete. No money movement, no token — settlement is
+  // out of band; the board records offers and explicit outcome rows.
+  app.use(createBountiesRouter({ storeDir: deps.bountiesDir ?? wired.observationsDir }));
   // Express 4 drops a rejected async handler on the floor: the request hangs and the
   // process dies on the unhandled rejection. Route every rejection to the 500 handler.
   const guard = (fn) => (req, res, next) => fn(req, res, next).catch(next);
@@ -393,6 +403,10 @@ export function createApp(deps = {}) {
   }
   app.use((err, _req, res, next) => {
     if (err && (err.type === "entity.parse.failed" || (err instanceof SyntaxError && err.status === 400 && "body" in err))) {
+      // Seller callers parse one wrapper shape: keep malformed JSON inside it.
+      if (_req && typeof _req.path === "string" && _req.path.startsWith("/seller/")) {
+        return res.status(400).json({ success: false, error: { reason: "bad_json", details: [{ field: "offer", reason: "object_required" }] }, data: null });
+      }
       return res.status(400).json({ reason: "bad_json" });
     }
     next(err);

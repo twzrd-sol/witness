@@ -1,0 +1,68 @@
+{
+  "mode": "live_coordinator",
+  "placeholder_wallets": true,
+  "funded": false,
+  "transfers": 0,
+  "seller_url": "http://127.0.0.1:4042/seller/offer/validate",
+  "preflight_url": "https://intel.twzrd.xyz/v1/intel/preflight",
+  "checked_at": "2026-09-10T17:53:11.432Z",
+  "seller_probe": {
+    "status": 200,
+    "seller_card": {
+      "schema_version": "seller-card/v1",
+      "seller_id": "placeholder-poster",
+      "payout_wallet": "0x0000000000000000000000000000000000000001",
+      "capability": "TWZRD backlog work",
+      "price_usdc": "0.500000",
+      "currency": "USDC",
+      "network": "base",
+      "sla_minutes": 60,
+      "deliverable": {
+        "description": "Reviewed Markdown artifact",
+        "mime_type": "text/markdown"
+      },
+      "outcomes": {
+        "completed_jobs": 0,
+        "accepted_jobs": 0,
+        "approval_rate": null,
+        "refunded_jobs": 0,
+        "refund_rate": null,
+        "median_delivery_minutes": null
+      },
+      "evidence_url": null,
+      "evidence_status": "none"
+    },
+    "success": true
+  },
+  "preflight_probe": {
+    "status": 200,
+    "decision": "warn",
+    "can_spend": false,
+    "reason_codes": [
+      "PREFLIGHT_WARN",
+      "CORPUS_TEASER",
+      "THIN_OR_UNKNOWN_SELLER",
+      "CAP_APPLIED"
+    ],
+    "recommended_action": "proceed_with_cap",
+    "maximum_recommended_spend_usdc": 0.1,
+    "expires_at": "2026-09-13T17:53:12Z",
+    "echo": {
+      "seller_wallet": "0x0000000000000000000000000000000000000001",
+      "chain": null,
+      "price_usdc": 0.5
+    }
+  },
+  "binding_check": {
+    "seller_wallet_echoed": true,
+    "chain_echoed": "absent",
+    "price_usdc_echoed": true,
+    "expires_at_future": true
+  },
+  "board_post": {
+    "status": 403,
+    "reason": "preflight_denied",
+    "listed": false
+  },
+  "verdict": "refused: preflight_denied (board requires decision=allow AND can_spend=true)"
+}

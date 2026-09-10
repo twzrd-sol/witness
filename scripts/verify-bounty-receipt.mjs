@@ -1,0 +1,13 @@
+import { readFileSync } from 'node:fs';
+import { createPublicKey } from 'node:crypto';
+import path from 'node:path';
+import assert from 'node:assert/strict';
+import { verifyReceipt, sourceHash } from '../src/receipt.js';
+const dir = process.argv[2] ?? 'artifacts/bounty-internal-loop';
+const receipt = JSON.parse(readFileSync(path.join(dir, 'completion-receipt.json'), 'utf8'));
+const key = readFileSync(path.join(dir, 'public-key.pem'), 'utf8');
+assert.equal(receipt.schema_version, 'bounty-completion/v1');
+assert.equal(receipt.key_id, sourceHash(key));
+assert.ok(verifyReceipt(receipt, createPublicKey(key)), 'Signature invalid');
+assert.equal(receipt.artifact.sha256, sourceHash(readFileSync(path.join(dir, 'seller-error-contract.md'))));
+console.log(`Verified signature and artifact hash; mode=${receipt.mode}; settlement=${receipt.settlement.status}`);

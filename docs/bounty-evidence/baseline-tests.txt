@@ -1,0 +1,257 @@
+
+> test
+> node --test test/*.test.js
+
+✔ assertion v1: numeric ==, <, <=, >, >= (0.861364ms)
+✔ assertion v1: string == with quoted literals (0.200708ms)
+✔ assertion v1: exists (0.095519ms)
+✔ assertion v1: type mismatches are false, never coerced (0.100739ms)
+✔ assertion v1: malformed assertions are false (reject-by-default) (0.118209ms)
+✔ assertion v1: only the page's own fields exist — Object.prototype is never a field (0.154719ms)
+✔ no prior_receipt: quote and receipt shapes unchanged (no changed key) (26.812266ms)
+✔ forged prior -> 422 prior_invalid, retrieve not called (0.772974ms)
+✔ non-string receipt field -> 422 prior_invalid, never 500, retrieve not called (0.479766ms)
+✔ valid prior, different method -> 422 prior_method_mismatch, retrieve not called (0.383247ms)
+✔ expired prior, same source -> changed:false, paid receipt verifies (6.359371ms)
+✔ expired prior, changed source -> changed:true, receipt binds delta and verifies (1.495499ms)
+✔ unpaid deliverable with valid prior -> 402, not 422 (1.27267ms)
+✔ day-one proof: ten controlled sources produce the verdict each one earns (7.894479ms)
+✔ every supported assertion carries verifiable source evidence (3.035697ms)
+✔ a malformed assertion cannot produce supported, and neither can no assertion (0.192849ms)
+✔ absent evidence is incomplete, never contradicted -- missing is not fraud (0.169778ms)
+✔ offline verification succeeds with only the bundle and a pinned key (0.602685ms)
+✔ changing the source body invalidates the content match (0.403907ms)
+✔ changing the assertion invalidates the receipt (0.584575ms)
+✔ recomputation catches a forgery that is correctly signed (0.950963ms)
+✔ a stale receipt is distinguishable from a current observation (0.822424ms)
+✔ a receipt observed in the future is not evidence about any past (0.611046ms)
+✔ a receipt from a different extractor replays as unable_to_verify, not tampering (0.950453ms)
+✔ the receipt labels reader metadata as the reader's and leaves origin null (0.731754ms)
+✔ refetch comparison names the four cases without explaining them (0.592875ms)
+✔ malformed input cannot crash the verifier (0.271668ms)
+✔ normalizeExtract: canonical deep-equal, JSON Schema collapses, junk is null (1.160851ms)
+✔ canonical dialect: spec_hash byte-identical to the pre-normalisation pin (12.821152ms)
+✔ JSON Schema dialect: quote 200, signed method is canonical, same spec_hash (17.106389ms)
+✔ JSON Schema dialect agrees with a canonical prior_receipt (no prior_method_mismatch) (1.266961ms)
+✔ malformed extract: 400 bad_extract with the teaching example, retrieve never called (0.409057ms)
+✔ real extract_missing is still 422 — in the JSON Schema dialect too (1.762086ms)
+✔ POST /quote: JSON Schema 200, array 400, both dialects share one funnel spec_hash (59.103509ms)
+✔ extraction reads the document, not the reader's transport envelope (2.321503ms)
+✔ unwrap passes through non-envelope bodies and fails closed on reader errors (0.376057ms)
+✔ a quoted field beats a bare key= elsewhere in the document (1.211701ms)
+✔ the number matcher stays inside the field it named (1.24571ms)
+✔ a number needs a digit, so a lone comma cannot read as zero (0.814204ms)
+✔ a number's quote is the number, not the delimiter after it (0.785165ms)
+file:///home/twzrd/worktrees/witness-bounty-http-loop/src/openapi.js:124
+const bountyOk = out("Bounty record", {
+                 ^
+
+ReferenceError: Cannot access 'out' before initialization
+    at file:///home/twzrd/worktrees/witness-bounty-http-loop/src/openapi.js:124:18
+    at ModuleJob.run (node:internal/modules/esm/module_job:439:25)
+    at async node:internal/modules/esm/loader:643:26
+    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)
+
+Node.js v24.19.0
+✖ test/extract-hardening.test.js (274.478064ms)
+file:///home/twzrd/worktrees/witness-bounty-http-loop/src/openapi.js:124
+const bountyOk = out("Bounty record", {
+                 ^
+
+ReferenceError: Cannot access 'out' before initialization
+    at file:///home/twzrd/worktrees/witness-bounty-http-loop/src/openapi.js:124:18
+    at ModuleJob.run (node:internal/modules/esm/module_job:439:25)
+    at async node:internal/modules/esm/loader:643:26
+    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)
+
+Node.js v24.19.0
+✖ test/extract-typename.test.js (135.394356ms)
+✔ string extract: label syntax (bounds unchanged) (2.312042ms)
+✔ string extract: quoted JSON keys and values (0.193539ms)
+✔ string extract: missing and empty cases (0.696754ms)
+✔ number extract: quoted JSON keys/values still parse (1.28232ms)
+✔ evidence cites snippets around extracted values (0.478136ms)
+✔ extract keys require exact boundaries (1.230171ms)
+✔ funnel outcomes map statuses to the five contract categories (1.466809ms)
+✔ funnel reason admits only the handler's enum tokens, never free text (0.344497ms)
+✔ funnel log records outcomes with spec_hash and zero sensitive fields (91.101605ms)
+✔ funnel is disabled when funnelDir is explicitly null (6.813848ms)
+✔ malformed JSON POST still records a non-deliverable outcome (23.47688ms)
+✔ funnel reason splits non-deliverable into its 400 shape errors and 422 capability limits (34.728255ms)
+file:///home/twzrd/worktrees/witness-bounty-http-loop/src/openapi.js:124
+const bountyOk = out("Bounty record", {
+                 ^
+
+ReferenceError: Cannot access 'out' before initialization
+    at file:///home/twzrd/worktrees/witness-bounty-http-loop/src/openapi.js:124:18
+    at ModuleJob.run (node:internal/modules/esm/module_job:439:25)
+    at async node:internal/modules/esm/loader:643:26
+    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)
+
+Node.js v24.19.0
+✖ test/host.test.js (306.4271ms)
+✔ keystore persists one process key across reloads (2.804189ms)
+file:///home/twzrd/worktrees/witness-bounty-http-loop/src/openapi.js:124
+const bountyOk = out("Bounty record", {
+                 ^
+
+ReferenceError: Cannot access 'out' before initialization
+    at file:///home/twzrd/worktrees/witness-bounty-http-loop/src/openapi.js:124:18
+    at ModuleJob.run (node:internal/modules/esm/module_job:439:25)
+    at async node:internal/modules/esm/loader:643:26
+    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)
+
+Node.js v24.19.0
+✖ test/mcp-probe.test.js (254.743025ms)
+file:///home/twzrd/worktrees/witness-bounty-http-loop/src/openapi.js:124
+const bountyOk = out("Bounty record", {
+                 ^
+
+ReferenceError: Cannot access 'out' before initialization
+    at file:///home/twzrd/worktrees/witness-bounty-http-loop/src/openapi.js:124:18
+    at ModuleJob.run (node:internal/modules/esm/module_job:439:25)
+    at async node:internal/modules/esm/loader:643:26
+    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)
+
+Node.js v24.19.0
+✖ test/mcp.test.js (254.577626ms)
+✔ method identity is canonical and results are attributable (6.268752ms)
+✔ comparator derives the five star states mechanically (9.874494ms)
+✔ paid-shaped receipts append, verify with process key, and skip junk (1.483079ms)
+✔ paid contradiction: same method, different vantage + value, both unexpired -> flare (contradicted) (0.764064ms)
+file:///home/twzrd/worktrees/witness-bounty-http-loop/src/openapi.js:124
+const bountyOk = out("Bounty record", {
+                 ^
+
+ReferenceError: Cannot access 'out' before initialization
+    at file:///home/twzrd/worktrees/witness-bounty-http-loop/src/openapi.js:124:18
+    at ModuleJob.run (node:internal/modules/esm/module_job:439:25)
+    at async node:internal/modules/esm/loader:643:26
+    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)
+
+Node.js v24.19.0
+✖ test/openapi.test.js (311.994828ms)
+✔ SSRF refuse http://127.0.0.1/ (14.862386ms)
+✔ quote 422 when extract keys missing from fixture html (15.090515ms)
+✔ quote 200 when fixture html fills extract (8.282037ms)
+✔ an assertion that does not hold is quoted as contradicted, not refused (1.880915ms)
+✔ an unreadable claim is never priced -- unable_to_verify stays a free refusal (1.146691ms)
+✔ a claim whose field the source lacks is quoted as incomplete, and says which (3.477413ms)
+✔ with no claim at all, a bare extract miss is still the free refusal (1.616527ms)
+✔ scrape 422 does not call browse (0.722014ms)
+✔ POST /quote SSRF does not retrieve (24.137386ms)
+✔ POST /quote rate limits anonymous reader probes (8.007639ms)
+✔ paid receipt binds URL, retrieval time, representation identity, and evidence spans (8.871412ms)
+✔ renderReceiptJson: serializes signed receipt and preserves offline verifiability (3.87884ms)
+✔ renderReceiptHtml: renders all four reachable receipt states (1.648817ms)
+✔ renderReceiptHtml: escapes dynamic inputs to prevent XSS (0.278708ms)
+✔ renderReceiptHtml: handles v2 evidence array (1.789816ms)
+✔ renderReceiptMcp: formats MCP tool response compliant with model-context-protocol (2.478871ms)
+✔ verdict classification: mixed is recognized, absent is OBSERVED, unrecognized renders UNKNOWN (1.579328ms)
+✔ renderReceipt: universal dispatcher routes across all three renderings (0.553836ms)
+file:///home/twzrd/worktrees/witness-bounty-http-loop/src/openapi.js:124
+const bountyOk = out("Bounty record", {
+                 ^
+
+ReferenceError: Cannot access 'out' before initialization
+    at file:///home/twzrd/worktrees/witness-bounty-http-loop/src/openapi.js:124:18
+    at ModuleJob.run (node:internal/modules/esm/module_job:439:25)
+    at async node:internal/modules/esm/loader:643:26
+    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)
+
+Node.js v24.19.0
+✖ test/retrieve.test.js (309.1727ms)
+file:///home/twzrd/worktrees/witness-bounty-http-loop/src/openapi.js:124
+const bountyOk = out("Bounty record", {
+                 ^
+
+ReferenceError: Cannot access 'out' before initialization
+    at file:///home/twzrd/worktrees/witness-bounty-http-loop/src/openapi.js:124:18
+    at ModuleJob.run (node:internal/modules/esm/module_job:439:25)
+    at async node:internal/modules/esm/loader:643:26
+    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)
+
+Node.js v24.19.0
+✖ test/seller-route.test.js (303.9811ms)
+✔ validates a machine-readable seller offer (1.042632ms)
+✔ rejects unsupported currency, network, and malformed price (0.143709ms)
+✔ seller card leaves performance unknown without history (0.172988ms)
+✔ seller card computes rates from explicit outcomes (0.134279ms)
+✔ rejects non-HTTPS evidence links (0.938613ms)
+✔ gate method is the design-partner shopping-preapproval card, byte-stable (0.918013ms)
+✔ gate: supported verdict approves the simulated checkout (0.132949ms)
+✔ gate: contradicted is an answer and blocks the checkout, never a fraud label (0.076079ms)
+✔ gate: incomplete and stale block; verdict is carried, not swallowed (0.093549ms)
+✔ gate: a receipt-shaped object without a verdict field cannot approve (0.073729ms)
+✔ dry run: quote is free, verdict announced, and no payment header is ever built (30.400368ms)
+✔ paid run: settles only on a deliverable quote and gates on a signature-verifiable receipt (2.934397ms)
+✔ live verification path: signature-verifiable receipt from /pubkey-shaped b64 gates; tamper blocks (1.857746ms)
+✔ twice-pay: two paid receipts for one PLAN method group into one card (109.927331ms)
+✔ what you are quoted is what you are issued, for every reachable verdict (20.99887ms)
+✔ one price for every verdict -- the answer costs the same whatever it is (3.057967ms)
+✔ every issued receipt verifies offline against the pinned key, whatever its verdict (2.390441ms)
+✔ the billing line is a constant, and nothing outside it is ever charged (2.060904ms)
+✔ twice-pay survives the new class: two contradicted receipts group into one card (1.705447ms)
+✔ a document where nothing extracted is never billed as incomplete (0.729895ms)
+✔ incomplete still bills when another field proves the extractor read the page (0.970103ms)
+✔ receipt verify with process pubkey (7.244085ms)
+✔ paid card appends; /observatory reads the log, not seeds (15.782379ms)
+✔ a card never renders a non-supported group as one settled answer (2.740379ms)
+✔ a claim the source cannot answer is quoted, charged, and labelled incomplete (0.744614ms)
+✔ a document where nothing resolved is not sold as incomplete (0.322757ms)
+✔ with no claim, an extract miss still never reaches the paywall (0.272908ms)
+✔ POST /witness unpaid 402 after a deliverable quote (0.327557ms)
+✔ GET /pubkey (2.313612ms)
+✔ paywall wired: unpaid deliverable → real x402 402 challenge, both rails (28.489143ms)
+✔ paywall resource URL follows publicBaseUrl (PUBLIC_BASE_URL), never the request host (12.873042ms)
+✔ paywall wired: our own defects and unreadable claims never bill (24.066896ms)
+✔ paid witness reuses the quote retrieve — one scrape per observation (0.684294ms)
+✔ GET /witness is crawlable discovery: 402 challenge, zero retrieve (8.150348ms)
+✔ malformed JSON: /witness returns 402 challenge envelope, /quote teaches 400 (3.309944ms)
+✔ nested-value tampering fails receipt verification (0.916343ms)
+✔ no paywall: forged x-payment must not mint a receipt or append (1.860466ms)
+✔ no paywall: forged payment-signature must not mint a receipt or append (1.917435ms)
+✔ paywall wired: unpaid deliverable still returns the x402 402 challenge (7.8464ms)
+✔ explicit deps.paid (not an HTTP header) still signs a verifiable receipt (0.747494ms)
+ℹ tests 123
+ℹ suites 0
+ℹ pass 115
+ℹ fail 8
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 499.280809
+
+✖ failing tests:
+
+test at test/extract-hardening.test.js:1:1
+✖ test/extract-hardening.test.js (274.478064ms)
+  'test failed'
+
+test at test/extract-typename.test.js:1:1
+✖ test/extract-typename.test.js (135.394356ms)
+  'test failed'
+
+test at test/host.test.js:1:1
+✖ test/host.test.js (306.4271ms)
+  'test failed'
+
+test at test/mcp-probe.test.js:1:1
+✖ test/mcp-probe.test.js (254.743025ms)
+  'test failed'
+
+test at test/mcp.test.js:1:1
+✖ test/mcp.test.js (254.577626ms)
+  'test failed'
+
+test at test/openapi.test.js:1:1
+✖ test/openapi.test.js (311.994828ms)
+  'test failed'
+
+test at test/retrieve.test.js:1:1
+✖ test/retrieve.test.js (309.1727ms)
+  'test failed'
+
+test at test/seller-route.test.js:1:1
+✖ test/seller-route.test.js (303.9811ms)
+  'test failed'
