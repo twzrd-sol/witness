@@ -71,6 +71,52 @@ export function openapiDoc(env = process.env) {
           },
         },
       },
+      "/offers/{id}": {
+        get: {
+          summary: "Consumer offer page",
+          description: "HTML for one offer: outcome, deliverable, price, license, buy link (merchant-hosted checkout), and the agent task link. Unknown id is 404.",
+          security: [],
+          responses: {
+            "200": textOut("Offer HTML page.", "text/html"),
+            "404": textOut("Unknown offer id.", "text/plain"),
+          },
+        },
+      },
+      "/api/offers/{id}": {
+        get: {
+          summary: "Consumer offer as structured data",
+          description: "The catalog record for one offer (checkout:merchant_hosted). Unknown id is 404 {reason: offer_not_found}.",
+          security: [],
+          responses: {
+            "200": out("Offer", { type: "object" }),
+            "404": out("Unknown offer", { type: "object" }),
+          },
+        },
+      },
+      "/api/offers/{id}/task.json": {
+        get: {
+          summary: "Copyable agent task for one offer",
+          description: "Intent, requirements, merchant links, and price for an agent to execute the purchase. Unknown id is 404.",
+          security: [],
+          responses: {
+            "200": out("Agent task", { type: "object" }),
+            "404": out("Unknown offer", { type: "object" }),
+          },
+        },
+      },
+      "/api/quotes": {
+        post: {
+          summary: "Build a cart and get the merchant checkout URL",
+          description: "prepare_checkout for one offer: returns the cart (items, subtotal, currency) and a checkout_url at the merchant where payment completes. Unknown id is 404; missing id or bad quantity is 400.",
+          security: [],
+          requestBody: body({ type: "object", required: ["offer_id"], properties: { offer_id: { type: "string", example: "pixel-surplus-vintage-polaroid" }, quantity: { type: "integer", minimum: 1, maximum: 99, default: 1 } } }, { offer_id: "pixel-surplus-vintage-polaroid", quantity: 1 }),
+          responses: {
+            "200": out("Cart and checkout URL", { type: "object" }),
+            "400": out("Missing offer_id or bad quantity", { type: "object" }),
+            "404": out("Unknown offer", { type: "object" }),
+          },
+        },
+      },
       "/witness": {
         get: {
           summary: "Crawlable discovery — 402 payment challenge",

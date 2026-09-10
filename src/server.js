@@ -6,6 +6,7 @@ import { evalAssertion, pubkeyB64, signReceipt, sourceHash, verifyReceipt } from
 import { appendObservation, compareReceipts, methodFromRequest, readObservations, specHash, VALID_FOR_MS } from "./observatory.js";
 import { renderStarMap } from "./star-map.js";
 import { funnelOutcome, funnelSpecHash, recordFunnel } from "./funnel.js";
+import { createOffersRouter } from "./routes/offers.js";
 import { paymentMiddleware } from "@x402/express";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { x402ResourceServer, HTTPFacilitatorClient } from "@x402/core/server";
@@ -188,6 +189,8 @@ export function createApp(deps = {}) {
     next();
   });
   const reply = (res, out) => res.status(out.status).json(out.json);
+  // Consumer offers: catalog, cart, and merchant-hosted checkout URL.
+  app.use(createOffersRouter());
   const witness = async (req, res) => reply(res, await handleWitness(req.body, { ...wired, paid: false }));
   const paidWitness = async (req, res) => reply(res, await handleWitness(req.body, { ...wired, paid: true }));
   app.get("/pubkey", (_req, res) => res.json({ pubkey: pubkeyB64(key) }));

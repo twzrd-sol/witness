@@ -2,6 +2,8 @@
 
 2026-09-10. Reviewable implementation target; not a statement of shipped functionality.
 
+> **Superseded for the HTTP surface (2026-09-10, later the same day).** The shipped routes follow the Claude Commerce Agents shape — catalog record, cart, merchant-hosted `checkout_url` — without the `handoff_required` / `authorization:null` / `enforcement_scope` stamps described below. See `claude-commerce-agents.md`. The mandate, quote-binding, and durable-decision sections remain the target for any future TWZRD-authorized payment path.
+
 ## First offer
 
 Pixel Surplus, Vintage Polaroid Photo Frames, Desktop Commercial Use License, variant `46117070209071`. Catalog observed USD 600 minor units on 2026-09-10. The observed price is not a final quote. Public product: `https://pixelsurplus.com/products/vintage-polaroid-photo-frames`. Catalog-returned cart permalink: `https://pixel-surplus.myshopify.com/cart/46117070209071:1`.
