@@ -1,11 +1,12 @@
 import express from "express";
-import { buildOfferJson, buildOfferTask, getOffer, handleOfferQuote, probeX402Offer, renderOfferHtml, verifyMerchantOffer } from "../offers.js";
+import { buildOfferJson, buildOfferTask, getOffer, handleOfferQuote, listOffers, probeX402Offer, renderOfferHtml, verifyMerchantOffer } from "../offers.js";
 
 /**
  * Consumer offer surface (standalone router, mounted in ../server.js).
  *
  * - GET /offers/:id — offer page with a buy link and the agent task.
- * - GET /api/offers/:id — offer as structured data (catalog record).
+ * - GET /api/offers — every offer as structured data (the catalog).
+ * - GET /api/offers/:id — one offer as structured data (catalog record).
  * - GET /api/offers/:id/task.json — copyable agent task.
  * - POST /api/quotes — build a cart and return the gated checkout: the
  *   merchant checkout URL (after Witness confirms the live price) or the
@@ -53,6 +54,10 @@ export function createOffersRouter(deps = {}) {
     const offer = getOffer(req.params.id, deps.catalog);
     if (!offer) return res.status(404).type("text/plain").send("offer_not_found");
     res.type("text/html").send(renderOfferHtml(offer));
+  });
+
+  router.get("/api/offers", (_req, res) => {
+    res.json({ offers: listOffers(deps.catalog) });
   });
 
   router.get("/api/offers/:id", (req, res) => {
