@@ -59,9 +59,9 @@ says at the moment of purchase. That is Witness's job:
 - **Pre-checkout observation.** `POST /witness` (x402-paid) fetches the
   merchant page, extracts the price, and returns a signed receipt with
   `verdict: supported | contradicted | incomplete | stale | unable_to_verify`.
-  The shopping-preapproval harness (`scripts/shopping-preapproval.mjs` on
-  the `pilot/offers-handoff` lineage, not yet on master) turns that verdict
-  into an approve/block decision (`decideGate`) before a simulated checkout.
+  The shopping-preapproval harness (`scripts/shopping-preapproval.mjs`)
+  turns that verdict into an approve/block decision (`decideGate`) before a
+  simulated checkout.
 - **Where it plugs in.** Between "cart built" and "checkout URL rendered": a
   `StorefrontBackend.prepare_checkout` implementation can call Witness with
   the offer's `product_url` and the expected `price_minor`, and refuse to
