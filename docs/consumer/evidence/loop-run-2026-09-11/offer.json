@@ -1,0 +1,13 @@
+{
+  "resource_url": "https://reader.outbid.sh/scrape?url=https%3A%2F%2Fexample.com",
+  "deliverable_class": "data_json",
+  "price_usdc": 0.005,
+  "spec": {
+    "required_fields": {
+      "title": "string",
+      "markdown": "string",
+      "word_count": "number"
+    }
+  },
+  "spec_origin": "buyer_authored"
+}

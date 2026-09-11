@@ -1,0 +1,54 @@
+{
+  "status": 200,
+  "body": {
+    "id": "outbid-reader-scrape",
+    "rail": "x402",
+    "merchant": "outbid",
+    "product": "Reader",
+    "variant": "scrape — HTML to markdown",
+    "outcome": "Read any public page as clean markdown.",
+    "deliverable": "JSON {title, content, markdown, word_count} for one public URL.",
+    "product_url": "https://outbid.sh",
+    "checkout": "x402",
+    "price": {
+      "amount_atomic": "5000",
+      "asset": "USDC",
+      "usd": "0.005"
+    },
+    "resource": {
+      "method": "GET",
+      "url_template": "https://reader.outbid.sh/scrape?url={url}",
+      "input": {
+        "url": "public http(s) URL to read"
+      }
+    },
+    "accepts": [
+      {
+        "scheme": "exact",
+        "network": "eip155:8453",
+        "amount": "5000",
+        "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        "payTo": "0x14df772BD496bBb7f49Bc3E992Ce13B2c441177F"
+      },
+      {
+        "scheme": "exact",
+        "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+        "amount": "5000",
+        "asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "payTo": "F1AbWuXJcBT9arW9wc6Xr2vom5NBtngWsz6Ht16jRBLM"
+      }
+    ],
+    "delivery": {
+      "deliverable_class": "data_json",
+      "spec_origin": "buyer_authored",
+      "spec": {
+        "required_fields": {
+          "title": "string",
+          "markdown": "string",
+          "word_count": "number"
+        }
+      }
+    }
+  },
+  "at": "2026-09-11T08:36:54.213Z"
+}
