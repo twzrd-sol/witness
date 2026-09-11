@@ -10,7 +10,8 @@
  *                POST /witness through @x402/fetch with the SVM keypair named by
  *                --keypair (the wallet pays; the facilitator's feePayer posts).
  *                The receipt gates checkout ONLY if its signature verifies
- *                against GET /pubkey. Any other outcome is an abort.
+ *                in a separate offline process against an independently pinned
+ *                --trusted-pubkey, expected method, freshness and supported verdict.
  *
  * Every run appends one line to data/preapproval.ndjson with the payer identity,
  * so operator runs are always distinguishable from external demand.
@@ -22,7 +23,9 @@ import { createRequire } from "node:module";
 import { appendFileSync, mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { verifyReceipt } from "../src/receipt.js";
+import { canonical, sourceHash, verifyReceipt } from "../src/receipt.js";
+import childProcess from "node:child_process";
+import { methodFromRequest } from "../src/observatory.js";
 
 const require = createRequire(import.meta.url);
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -37,7 +40,8 @@ export const GATE_METHOD = Object.freeze({
   replicas: 1,
 });
 
-/** Downstream decision rule. Only a supported claim approves the checkout;
+/** DRY simulation only; NOT a completion or live checkout predicate.
+ *  Only a supported claim approves the simulated checkout;
  *  contradicted, incomplete, stale, and unable_to_verify are answers that block.
  *  Unknown/missing verdicts block (fail-closed), always. */
 export function decideGate(receipt) {
@@ -58,9 +62,19 @@ export function verifyAgainstPubkeyB64(receipt, pubkeyB64) {
 }
 
 /** One run. mode: "dry" | "live". Returns a step record; never throws on remote failure. */
-export async function runOnce({ base, mode, keypairPath, log = () => {} }) {
-  const run = { ts: new Date().toISOString(), mode, base, step: null, status: null, paid: false, payer: null };
+export async function runOnce({ base, mode, keypairPath, trustedPubkeyB64, paymentTransport = createPaymentTransport, log = () => {} }) {
+  const run = { ts: new Date().toISOString(), mode, base, step: null, status: null,
+    paid: false, payment_attempted: false, payment_status: "not_attempted", payer: null,
+    completion: "incomplete", checkout_approved: false, check: { approve: false, reason: "not_run" } };
+  if (mode === "live") {
+    try {
+      if (createPublicKeyFromB64(trustedPubkeyB64).asymmetricKeyType !== "ed25519") throw new Error("wrong key type");
+    } catch {
+      return { ...run, approve: false, decision: { approve: false, reason: "trusted_key_invalid" } };
+    }
+  }
 
+  try {
   // Step 1: free quote. Both modes stop here unless the quote is deliverable.
   const quoteRes = await fetch(`${base}/quote`, {
     method: "POST",
@@ -82,22 +96,11 @@ export async function runOnce({ base, mode, keypairPath, log = () => {} }) {
   }
 
   // Step 2: one paid POST /witness. The wallet is loaded only after a deliverable quote.
-  const { wrapFetchWithPayment } = require("@x402/fetch");
-  const { x402Client } = require("@x402/fetch");
-  const { ExactSvmScheme } = require("@x402/svm/exact/client");
-  const { createKeyPairSignerFromBytes } = require("@solana/kit");
-
-  const raw = Uint8Array.from(JSON.parse(readFileSync(keypairPath, "utf8")));
-  const signer = await createKeyPairSignerFromBytes(raw);
-  run.payer = signer.address;
-  run.paid = true;
-
-  const client = new x402Client().register(
-    "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
-    new ExactSvmScheme(signer, { rpcUrl: "https://api.mainnet-beta.solana.com" })
-  );
-  const pay = wrapFetchWithPayment(globalThis.fetch, client);
-  log(`witness POST as ${signer.address}`);
+  const { pay, payer } = await paymentTransport(keypairPath);
+  run.payer = payer;
+  run.payment_status = "unknown";
+  run.payment_attempted = true;
+  log(`witness POST as ${payer}`);
   const witRes = await pay(`${base}/witness`, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -112,45 +115,80 @@ export async function runOnce({ base, mode, keypairPath, log = () => {} }) {
     return { ...run, decision: { approve: false, reason: `witness_http_${witRes.status}` }, approve: false };
   }
 
-  // Step 3: the checkout gates only on a signature-verifiable receipt.
-  const pubRes = await fetch(`${base}/pubkey`);
-  let verified = false;
+  // A fixed offline program, not actor narration, decides the live gate.
+  let check = { approve: false, reason: "verifier_failed" };
   try {
-    verified = verifyAgainstPubkeyB64(receipt, (await pubRes.json()).pubkey);
+    const child = childProcess.spawnSync(process.execPath, [path.join(ROOT, "scripts/verify-shopping-receipt.mjs")], {
+      input: JSON.stringify({ receipt, trustedPubkeyB64, expectedMethod: methodFromRequest(GATE_METHOD) }),
+      encoding: "utf8", timeout: 5000, maxBuffer: 1024 * 1024,
+      env: { PATH: process.env.PATH },
+    });
+    const parsed = JSON.parse(child.stdout);
+    if (!child.error && !child.signal && [0, 1].includes(child.status)
+        && parsed.verifier_pid === child.pid && typeof parsed.approve === "boolean"
+        && typeof parsed.reason === "string" && (child.status === 0) === parsed.approve
+        && (!parsed.approve || (parsed.receipt_verified === true && parsed.reason === "receipt_supported"
+          && parsed.receipt_hash === sourceHash(canonical(receipt))
+          && parsed.trusted_key_hash === sourceHash(Buffer.from(trustedPubkeyB64, "base64"))
+          && canonical(parsed.expected_method) === canonical(methodFromRequest(GATE_METHOD))
+          && Number.isFinite(Date.parse(parsed.checked_at))))) check = parsed;
+  } catch { /* Fail closed on launch, timeout, crash, or malformed output. */ }
+  const gate = { approve: check.approve === true, reason: check.reason };
+  return { ...run, receipt_verified: check.receipt_verified === true, check,
+    completion: gate.approve ? "complete" : "incomplete", checkout_approved: gate.approve,
+    decision: gate, approve: gate.approve };
   } catch {
-    verified = false;
+    return { ...run, approve: false, decision: { approve: false, reason: "run_failed" } };
   }
-  const gate = verified ? decideGate(receipt) : { approve: false, reason: "signature_invalid" };
-  return { ...run, receipt_verified: verified, decision: gate, approve: gate.approve };
+}
+
+async function createPaymentTransport(keypairPath) {
+  const { wrapFetchWithPayment } = require("@x402/fetch");
+  const { x402Client } = require("@x402/fetch");
+  const { ExactSvmScheme } = require("@x402/svm/exact/client");
+  const { createKeyPairSignerFromBytes } = require("@solana/kit");
+
+  const raw = Uint8Array.from(JSON.parse(readFileSync(keypairPath, "utf8")));
+  const signer = await createKeyPairSignerFromBytes(raw);
+
+
+  const client = new x402Client().register(
+    "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+    new ExactSvmScheme(signer, { rpcUrl: "https://api.mainnet-beta.solana.com" })
+  );
+  const pay = wrapFetchWithPayment(globalThis.fetch, client);
+  return { pay, payer: signer.address };
 }
 
 import { createPublicKey } from "node:crypto";
 function createPublicKeyFromB64(b64) {
+  if (typeof b64 !== "string" || !b64.length || Buffer.from(b64, "base64").toString("base64") !== b64) throw new Error("invalid public key encoding");
   return createPublicKey({ key: Buffer.from(b64, "base64"), format: "der", type: "spki" });
 }
 
 /** Append one ledger line. The payer identity (or its absence for dry runs) is the point. */
-export function logRun({ base, mode, payer, step, status, decision }) {
-  mkdirSync(DATA_DIR, { recursive: true });
+export function logRun({ base, mode, payer, step, status, decision, completion, checkout_approved, check, payment_status, payment_attempted }, { dataDir = DATA_DIR } = {}) {
+  mkdirSync(dataDir, { recursive: true });
   appendFileSync(
-    path.join(DATA_DIR, "preapproval.ndjson"),
-    `${JSON.stringify({ ts: new Date().toISOString(), mode, base, payer: payer ?? null, step, status, approve: decision.approve, reason: decision.reason })}\n`
+    path.join(dataDir, "preapproval.ndjson"),
+    `${JSON.stringify({ ts: new Date().toISOString(), mode, base, payer: payer ?? null, step, status, approve: decision.approve, reason: decision.reason, completion: completion ?? "incomplete", checkout_approved: checkout_approved === true, check: check ?? { approve: false, reason: "not_run" }, payment_status, payment_attempted })}\n`
   );
 }
 
-// CLI: --base=... --mode=dry|live --keypair=... (required for live)
+// CLI: --base=... --mode=dry|live --keypair=... --trusted-pubkey=<SPKI base64>
 const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (isMain) {
   const arg = (name, fallback) => process.argv.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3) ?? fallback;
   const base = arg("base", "https://witness.outbid.sh");
   const mode = arg("mode", "dry");
   const keypairPath = arg("keypair", null);
+  const trustedPubkeyB64 = arg("trusted-pubkey", null);
   if (mode === "live" && !keypairPath) {
     console.error("live mode requires --keypair=<path to solana keypair json>");
     process.exit(2);
   }
-  const run = await runOnce({ base, mode, keypairPath, log: (m) => console.error(m) });
-  logRun({ base, mode, payer: run.payer, step: run.step, status: run.status, decision: run.decision });
+  const run = await runOnce({ base, mode, keypairPath, trustedPubkeyB64, log: (m) => console.error(m) });
+  logRun(run);
   console.log(JSON.stringify(run, null, 2));
-  process.exit(run.approve ? 0 : 1);
+  process.exit(run.checkout_approved ? 0 : 1);
 }
