@@ -8,6 +8,7 @@ import { appendObservation, compareReceipts, methodFromRequest, readObservations
 import { renderStarMap } from "./star-map.js";
 import { funnelOutcome, funnelReason, funnelSpecHash, funnelVerdict, recordFunnel } from "./funnel.js";
 import { createOffersRouter } from "./routes/offers.js";
+import { createDeliveryRouter } from "./routes/delivery.js";
 import { paymentMiddleware } from "@x402/express";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { x402ResourceServer, HTTPFacilitatorClient } from "@x402/core/server";
@@ -305,6 +306,10 @@ export function createApp(deps = {}) {
     });
     next();
   });
+  // Delivery attestation: mounted ahead of the host JSON parser so the route owns its body
+  // errors (bad_json / body_too_large in its own envelope). The evidence model (src/delivery.js)
+  // is resolved lazily inside the router; deps.attest overrides it for tests and embedders.
+  app.use(createDeliveryRouter({ key, attest: deps.attest, importModel: deps.importModel, now: deps.now, verifier: deps.verifier ?? new URL(deps.publicBaseUrl || "https://witness.outbid.sh").host, maxStalenessSeconds: deps.maxStalenessSeconds }));
   app.use(express.json({ limit: "64kb" }));
   const reply = (res, out) => res.status(out.status).json(out.json);
   // Consumer offers: catalog, cart, and a gated checkout handoff. The gate
