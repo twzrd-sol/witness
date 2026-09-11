@@ -393,3 +393,103 @@ test("buildCheckoutUrl derives the origin from the offer record, per merchant", 
   assert.throws(() => buildCheckoutUrl({ cart_base: "http://insecure.example/cart", variant_id: "1" }, 1), /offer_missing_cart_base/);
   assert.throws(() => buildCheckoutUrl({ cart_base: "https://pixel-surplus.myshopify.com/cart", variant_id: "abc" }, 1), /offer_missing_variant/);
 });
+
+// ---------------------------------------------------------------------------
+// The second agent-payable offer, and the generalisations it forced.
+//
+// The x402 rail had exactly one listing, and the code had quietly grown around
+// it: resolveResourceUrl demanded an input.url that only the Reader has, and
+// buildOfferTask handed every x402 offer the Reader's intent text ("Read one
+// public page as markdown..."). A catalog of one cannot tell a general rail
+// from a special case.
+
+const STACKTREE_ID = "stacktree-publish";
+
+test("a body-input offer has a fixed resource URL and needs no caller input", () => {
+  // The Reader interpolates the agent's URL. Stacktree takes an HTML document in
+  // the request body, so there is nothing to interpolate - and demanding one
+  // would make the quote unreachable for every offer that is not the Reader.
+  const offer = OFFERS[STACKTREE_ID];
+  assert.equal(offer.resource.input_in, "body");
+  assert.equal(resolveResourceUrl(offer, undefined), "https://api.stacktr.ee/publish");
+  assert.equal(resolveResourceUrl(offer, {}), "https://api.stacktr.ee/publish");
+  // ...and the URL-input offer still refuses a missing or oversized url.
+  assert.throws(() => resolveResourceUrl(OFFERS[X402_ID], undefined), /bad_input_url/);
+});
+
+test("the agent task describes the offer it is for, not the Reader", async () => {
+  const { buildOfferTask } = await import("../src/offers.js");
+  const task = buildOfferTask(OFFERS[STACKTREE_ID]);
+  assert.match(task.intent, /Stacktree/);
+  assert.doesNotMatch(task.intent, /markdown/i, "the Reader's intent text was handed to another offer");
+  assert.doesNotMatch(task.requirements[0], /input: \{url\}/, "a body-input offer must not be told to send input.url");
+  // The Reader's own task must not have regressed while generalising.
+  const reader = buildOfferTask(OFFERS[X402_ID]);
+  assert.match(reader.intent, /markdown/i);
+  assert.match(reader.requirements[0], /input: \{url\}/);
+});
+
+test("every x402 offer carries a delivery spec POST /delivery/attest would accept", async () => {
+  // This is the seam between the during-payment stage and the after-settlement
+  // one. An offer whose delivery spec the attest route refuses is a handoff that
+  // dead-ends: the buyer pays, then cannot get a receipt without inventing a
+  // contract the seller never agreed to.
+  const { SPEC_ORIGINS } = await import("../src/delivery.js");
+  const { SPEC_TYPES } = await import("../src/routes/delivery.js");
+  const x402 = Object.values(OFFERS).filter((o) => o.rail === "x402");
+  assert.ok(x402.length >= 2, "the agent rail is still a single dogfood entry");
+  for (const offer of x402) {
+    const d = offer.delivery;
+    assert.ok(d, `${offer.id}: no delivery spec`);
+    assert.ok(SPEC_ORIGINS.includes(d.spec_origin), `${offer.id}: spec_origin ${d.spec_origin} is not one the receipt can carry`);
+    assert.ok(typeof d.deliverable_class === "string" && d.deliverable_class, `${offer.id}: deliverable_class required`);
+    for (const [field, type] of Object.entries(d.spec.required_fields)) {
+      assert.ok(SPEC_TYPES.includes(type), `${offer.id}: required_fields.${field} type "${type}" is not one the evidence model grades`);
+    }
+  }
+});
+
+test("the delivery spec a buyer is handed is the one the attest route grades", async () => {
+  // Not just well-formed in isolation: run it through the real route and confirm
+  // a response matching the seller's published field names actually grades
+  // `delivered`, and one missing a field grades `incomplete`.
+  const express = (await import("express")).default;
+  const { createDeliveryRouter } = await import("../src/routes/delivery.js");
+  const { generateProcessKey } = await import("../src/receipt.js");
+  const offer = OFFERS[STACKTREE_ID];
+
+  const app = express();
+  app.use(createDeliveryRouter({ key: generateProcessKey(), verifier: "witness.test", log: () => {} }));
+  const server = app.listen(0, "127.0.0.1");
+  await new Promise((r) => server.once("listening", r));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const grade = async (artifact) => {
+    const res = await fetch(`${base}/delivery/attest`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        offer: {
+          resource_url: offer.resource.url_template,
+          deliverable_class: offer.delivery.deliverable_class,
+          price_usdc: Number(offer.price_usdc),
+          spec: offer.delivery.spec,
+          spec_origin: offer.delivery.spec_origin,
+        },
+        request: { request_body: { html: "<!doctype html><p>x" }, settlement_ref: null, requested_at: "2026-09-11T04:00:00Z" },
+        observation: { artifact, observed_at: "2026-09-11T04:00:05Z", mode: "buyer_attested", http_status: 200 },
+      }),
+    });
+    return { status: res.status, body: await res.json() };
+  };
+  try {
+    const ok = await grade({ url: "https://stacktr.ee/p/abc/", claim_token: "one-time" });
+    assert.equal(ok.status, 200);
+    assert.equal(ok.body.delivery_verdict, "delivered");
+    assert.equal(ok.body.spec_origin, "seller_published", "the seller's own field names must not be recorded as buyer-authored");
+
+    const short = await grade({ url: "https://stacktr.ee/p/abc/" });
+    assert.equal(short.body.delivery_verdict, "incomplete", "a missing claim_token must not grade as delivered");
+  } finally {
+    await new Promise((r) => server.close(r));
+  }
+});

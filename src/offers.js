@@ -73,6 +73,60 @@ export const OFFERS = Object.freeze({
       Object.freeze({ scheme: "exact", network: "eip155:8453", amount: "5000", asset: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", payTo: "0x14df772BD496bBb7f49Bc3E992Ce13B2c441177F" }),
       Object.freeze({ scheme: "exact", network: "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp", amount: "5000", asset: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", payTo: "F1AbWuXJcBT9arW9wc6Xr2vom5NBtngWsz6Ht16jRBLM" }),
     ]),
+    // What a delivery attestation would grade this call against. Buyer-authored:
+    // outbid publishes no machine-readable output schema for its own Reader, so
+    // this spec is ours and a receipt built on it says so.
+    delivery: Object.freeze({
+      deliverable_class: "data_json",
+      spec_origin: "buyer_authored",
+      spec: Object.freeze({ required_fields: Object.freeze({ title: "string", markdown: "string", word_count: "number" }) }),
+    }),
+  }),
+  // The first listing that is not ours. It is here because the catalog analysis
+  // found it among the resources with PROVABLE repeat demand - more calls than
+  // payers, not a keepalive or a listing ping - and because its deliverable is
+  // one of the few that can be checked by someone who is not the seller: the
+  // response is a URL, and either it serves the page you sent or it does not.
+  //
+  // A listing is not an endorsement. It asserts exactly what the gate can
+  // re-observe: this resource answered 402 with this payee at this amount when
+  // we looked, and the handoff withholds the moment that stops being true.
+  "stacktree-publish": Object.freeze({
+    id: "stacktree-publish",
+    rail: "x402",
+    merchant: "Stacktree",
+    product: "Publish",
+    variant: "HTML to a permanent private link",
+    outcome: "Publish an HTML page an agent produced and get back a link it can share.",
+    deliverable: "JSON {url, claim_token} for one HTML document; the URL serves the page.",
+    price_usdc: "0.50",
+    amount_atomic: "500000",
+    asset: "USDC",
+    product_url: "https://stacktr.ee",
+    resource: Object.freeze({
+      method: "POST",
+      url_template: "https://api.stacktr.ee/publish",
+      input: Object.freeze({ html: "the full HTML document to host (JSON body)" }),
+      // The input travels in the request body, so there is nothing to interpolate
+      // into the URL and nothing for a caller to supply before the gate can probe.
+      input_in: "body",
+    }),
+    // Payees the catalog vouches for, read from the live challenge on
+    // 2026-09-11. Unpaid, this endpoint answers 402 on POST - the same method
+    // and the same challenge as GET - so the gate probes with the method the
+    // buyer actually pays on, and an unpaid probe cannot publish anything.
+    accepts: Object.freeze([
+      Object.freeze({ scheme: "exact", network: "eip155:8453", amount: "500000", asset: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", payTo: "0xcc985ba6934d134feec4824ba40258608f3a4333" }),
+      Object.freeze({ scheme: "exact", network: "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp", amount: "500000", asset: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", payTo: "Gr8z3Dh74y4nJJAW25r2WSmzm3ZQr2n5GU5qjavFG49c" }),
+    ]),
+    // seller_published: these field names are the seller's own, taken from the
+    // output schema it publishes in its 402 challenge, not paraphrased by us.
+    // That is the provenance a delivery receipt can carry without discount.
+    delivery: Object.freeze({
+      deliverable_class: "data_json",
+      spec_origin: "seller_published",
+      spec: Object.freeze({ required_fields: Object.freeze({ url: "string", claim_token: "string" }) }),
+    }),
   }),
 });
 
@@ -141,6 +195,10 @@ export function buildOfferJson(offer) {
       price: { amount_atomic: offer.amount_atomic, asset: offer.asset, usd: offer.price_usdc },
       resource: { method: offer.resource.method, url_template: offer.resource.url_template, input: offer.resource.input },
       accepts: offer.accepts,
+      // What POST /delivery/attest should grade the response against once this
+      // call is paid, and who wrote that spec. Carrying it here is what lets the
+      // after-settlement stage run without the buyer inventing a contract.
+      delivery: offer.delivery ?? null,
     };
   }
   return {
@@ -162,14 +220,15 @@ export function buildOfferTask(offer) {
     return {
       offer_id: offer.id,
       authorization: null,
-      intent: `Read one public page as markdown through ${offer.merchant} ${offer.product}, paying ${offer.asset} ${offer.price_usdc} over x402, and return the markdown.`,
+      intent: `${offer.outcome} Pay ${offer.asset} ${offer.price_usdc} to ${offer.merchant} ${offer.product} over x402 and return ${offer.deliverable}`,
       requirements: [
-        `POST /api/quotes with {offer_id, input: {url}} first; pay only against the accepts[] the quote returns.`,
+        `POST /api/quotes with {offer_id${offer.resource.input_in === "body" ? "" : ", input: {url}"}} first; pay only against the accepts[] the quote returns.`,
         `Pay exactly amount ${offer.amount_atomic} atomic ${offer.asset} to the quoted payTo on the quoted network; a different payee or amount is a stop.`,
         "One call, one payment; no retries that pay twice.",
       ],
       resource: { method: offer.resource.method, url_template: offer.resource.url_template, input: offer.resource.input },
       price: { amount_atomic: offer.amount_atomic, asset: offer.asset, usd: offer.price_usdc },
+      delivery: offer.delivery ?? null,
     };
   }
   return {
@@ -260,6 +319,10 @@ const same = (a, b) => typeof a === "string" && typeof b === "string" && a.toLow
 
 /** Resolve the resource URL for an x402 offer from agent input. Throws on bad input. */
 export function resolveResourceUrl(offer, input) {
+  // Offers whose input travels in the request body have a fixed resource URL:
+  // there is nothing to interpolate, and demanding an input.url would make the
+  // quote unreachable for every offer that is not the Reader.
+  if (offer.resource.input_in === "body") return offer.resource.url_template;
   const url = input && typeof input === "object" && !Array.isArray(input) ? input.url : undefined;
   if (typeof url !== "string" || url.length > 2048) throw new Error("bad_input_url");
   let parsed;
