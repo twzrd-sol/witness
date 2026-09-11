@@ -19,7 +19,7 @@ They share no code path. The verifier imports Witness's library verify functions
 library is the designated checker, and a receipt the route issues must satisfy
 the library's own verifier, not a reimplementation.
 
-## The ten predicates
+## The eleven predicates
 
 | Predicate | Evidence that satisfies it |
 | --- | --- |
@@ -33,8 +33,9 @@ the library's own verifier, not a reimplementation.
 | `spec_holds` | `checkSpec(artifact, offer.spec)` returns `delivered`, computed by the verifier |
 | `offer_matches_catalog` | offer.json's spec, class, price and origin equal the live `GET /api/offers/{id}` record |
 | `verdict_delivered` | `receipt.delivery_verdict` is `delivered` |
+| `attest_settled` | when the host advertises a paywall in `GET /.well-known/x402`, the attest call's own settlement tx exists, the run's payer signed it, and the host's payTo received exactly the advertised amount; on a host with no paywall this passes and says so |
 
-All ten must hold. `INCOMPLETE` is the default and a legal terminal state.
+All eleven must hold. `INCOMPLETE` is the default and a legal terminal state.
 
 ## Scoring
 
@@ -60,5 +61,7 @@ node scripts/loop-check.mjs --run=data/loop-runs/<id> --base=https://witness.out
 node scripts/loop-check.mjs --score
 ```
 
-The actor spends one payment (USDC 0.005 for the Reader). The verifier spends
-nothing and needs only the run directory, the host's pubkey, and a Solana RPC.
+The actor spends two payments on the live host: USDC 0.005 for the Reader and
+USDC 0.01 for the attestation (#34 put the attest route behind the /witness
+paywall). The verifier spends nothing and needs only the run directory, the
+host's pubkey and well-known descriptor, and a Solana RPC.

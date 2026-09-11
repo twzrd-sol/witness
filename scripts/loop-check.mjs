@@ -20,6 +20,10 @@
  *   spec_holds           checkSpec(artifact, offer.spec) passes, computed here
  *   offer_matches_catalog offer.json's spec/price/class equal the live catalog record
  *   verdict_delivered    receipt.delivery_verdict is "delivered"
+ *   attest_settled       when the host advertises a paywall (GET /.well-known/x402 accepts[]),
+ *                        the attest call's settlement tx exists, the run's payer signed it, and
+ *                        the host's own payTo received exactly the advertised amount; on a host
+ *                        with no paywall this passes and says so
  *
  * Exit 0 on DONE, 1 on INCOMPLETE, 2 on usage. Appends one line to
  * data/loop-runs/ledger.ndjson either way. `--score` prints the pass rate.
@@ -78,6 +82,7 @@ export async function checkRun(dir, { fetch: doFetch = globalThis.fetch, rpc = "
   const offer = readJson(dir, "offer.json");
   const receiptFile = readJson(dir, "receipt.json");
   const attestReq = readJson(dir, "attest-request.json");
+  const attestSettlement = readJson(dir, "attest-settlement.json");
 
   // gate_passed
   const q = quote?.body;
@@ -166,6 +171,33 @@ export async function checkRun(dir, { fetch: doFetch = globalThis.fetch, rpc = "
   // verdict_delivered
   if (receipt?.delivery_verdict === "delivered") pass("verdict_delivered", receipt.evidence_mode);
   else fail("verdict_delivered", receipt ? `verdict ${receipt.delivery_verdict ?? "absent"}` : "receipt missing");
+
+  // attest_settled — the attestation is a paid call on a paywalled host; the payee is the
+  // host's own, read from its well-known descriptor by the verifier, never from the run.
+  let hostAccepts = null;
+  if (base) {
+    try { hostAccepts = (await (await doFetch(`${base}/.well-known/x402`)).json())?.accepts ?? null; } catch { hostAccepts = null; }
+  }
+  const solHost = (hostAccepts ?? []).filter((a) => String(a.network).startsWith("solana:"));
+  if (!base) fail("attest_settled", "no --base to read the host's paywall from");
+  else if (hostAccepts === null) fail("attest_settled", "host well-known descriptor unreachable");
+  else if (!hostAccepts.length) pass("attest_settled", "host advertises no paywall; attest served unpaid");
+  else {
+    const asig = attestSettlement?.decoded?.transaction ?? null;
+    if (!asig) fail("attest_settled", "host bills attest but no attest settlement was recorded");
+    else if (asig === sig) fail("attest_settled", "attest settlement reuses the resource payment transaction");
+    else {
+      let atx = null;
+      try { atx = await solanaTx(rpc, asig, doFetch); } catch { atx = null; }
+      const hit = atx && !atx.meta?.err ? solHost.find((a) => receivedAtomic(atx, a.payTo, a.asset ?? USDC_SOL) === BigInt(a.amount)) : null;
+      const signers = (atx?.transaction?.message?.accountKeys ?? []).filter((k) => k.signer).map((k) => k.pubkey);
+      if (!atx) fail("attest_settled", "attest settlement transaction not found on chain");
+      else if (atx.meta?.err) fail("attest_settled", "attest settlement transaction errored");
+      else if (!hit) fail("attest_settled", "host payTo did not receive exactly the advertised amount");
+      else if (attestSettlement.payer && !signers.includes(attestSettlement.payer)) fail("attest_settled", "run payer did not sign the attest settlement");
+      else pass("attest_settled", `${hit.payTo} +${hit.amount} atomic, tx ${asig.slice(0, 12)}…`);
+    }
+  }
 
   const done = P.every((p) => p.pass) && txOk && verified?.valid === true;
   return { done, predicates: P, failed: P.filter((p) => !p.pass).map((p) => p.name) };

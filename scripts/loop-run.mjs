@@ -16,8 +16,11 @@
  *   4. settlement.json the decoded payment-response header (tx signature, network, payer)
  *   5. offer.json      the delivery offer sent to attest, built from the quote + catalog
  *   6. receipt.json    the bare receipt POST /delivery/attest returned
+ *   7. attest-settlement.json  the decoded payment-response for the attest call itself
+ *                      (since #34 the host bills attest at the /witness price)
  *
- * One payment, no retries. The wallet is loaded only after the gate passed.
+ * Two payments at most (the resource, then the attestation), no retries. The wallet
+ * is loaded only after the gate passed.
  */
 import { createRequire } from "node:module";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -118,13 +121,22 @@ async function main() {
     },
   };
   write("attest-request.json", attestBody);
-  const attestRes = await fetch(`${base}/delivery/attest`, {
+  // The attestation is itself a paid call on a host with a paywall: the same client
+  // answers its 402. On an unpaid host (tests, embedders) no payment happens.
+  const attestRes = await pay(`${base}/delivery/attest`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(attestBody),
   });
   const receipt = await attestRes.json().catch(() => null);
   write("receipt.json", { status: attestRes.status, body: receipt, at: now() });
+  const attestHeaders = Object.fromEntries(attestRes.headers.entries());
+  const attestPr = attestHeaders["payment-response"] ?? attestHeaders["x-payment-response"] ?? null;
+  let attestSettlement = null;
+  if (attestPr) {
+    try { attestSettlement = decodePaymentResponseHeader(attestPr); } catch { attestSettlement = null; }
+  }
+  write("attest-settlement.json", { header_present: Boolean(attestPr), decoded: attestSettlement, payer: signer.address });
 }
 
 main()
