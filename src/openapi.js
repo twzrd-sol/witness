@@ -1,3 +1,4 @@
+import { SPEC_ORIGINS } from "./delivery.js";
 import { EXTRACT_SCHEMA } from "./extract.js";
 import { ASSERTION_SCHEMA, witnessAccepts } from "./server.js";
 import { DELIVERY_VERDICTS, EXAMPLE_BODY as DELIVERY_EXAMPLE, MAX_BODY as DELIVERY_MAX_BODY, MODES, SPEC_TYPES } from "./routes/delivery.js";
@@ -100,7 +101,7 @@ const deliveryRequest = {
 
 const deliveryReceiptSchema = {
   type: "object",
-  required: ["schema", "offer_hash", "request_hash", "artifact_hash", "delivery_verdict", "reasons", "evidence_mode", "declared_mode", "observed_at", "requested_at", "verifier", "this_receipt_proves", "this_receipt_does_not_prove", "attested_at", "receipt"],
+  required: ["schema", "offer_hash", "request_hash", "artifact_hash", "delivery_verdict", "reasons", "evidence_mode", "declared_mode", "spec_origin", "observed_at", "requested_at", "verifier", "this_receipt_proves", "this_receipt_does_not_prove", "attested_at", "receipt"],
   properties: {
     schema: { type: "string", example: "delivery-attestation/v0" },
     offer_hash: { type: "string", description: "sha256 of the deep-canonical offer." },
@@ -114,11 +115,16 @@ const deliveryReceiptSchema = {
     requested_at: { type: "string", format: "date-time" },
     settlement_ref: { type: ["string", "null"] },
     http_status: { type: ["integer", "null"] },
-    seller_signature_present: { type: "boolean" },
     verifier: { type: "string", description: "Who signed: this host." },
     resource_url: { type: "string" },
     deliverable_class: { type: "string" },
     price_usdc: { type: "number" },
+    spec_origin: { type: "string", enum: [...SPEC_ORIGINS], description: "Who authored the spec the artifact was graded against. buyer_authored is the default and the weakest: the accuser wrote the half of the comparison that decides the verdict. Under seller_integrated the seller signs offer_hash, so the spec is bound." },
+    seller_verification: { type: ["object", "null"], description: "What was CHECKED, not that a signature was present. null means no verification was performed. { verified, reason, rail, checked[], signer }." },
+    seller_signature_covers: { type: "array", items: { type: "string" }, description: "The fields the SELLER signature covers. The receipt binds more than this; everything outside is covered by the Witness key alone." },
+    max_staleness_seconds: { type: "integer", description: "Signed, so a verdict cannot be re-read under a different window than the one that produced it." },
+    observation_gap_seconds: { type: ["number", "null"], description: "Seconds between requested_at and observed_at. Negative means observed before the request. null when timestamps were unparseable." },
+    within_freshness_window: { type: ["boolean", "null"], description: "Whether the observation is attributable to this call. Staleness caps every verdict, not only delivered." },
     this_receipt_proves: { type: "array", items: { type: "string" }, description: "The limits of the evidence mode, verbatim from the model and inside the signature. Read them before acting on the verdict." },
     this_receipt_does_not_prove: { type: "array", items: { type: "string" }, description: "What no delivery receipt establishes: funds recoverable, seller honest in general, buyer received it, order fulfilled end to end, dispute outcome. Inside the signature." },
     attested_at: { type: "string", format: "date-time", description: "When this host signed; observed_at is the caller's clock in buyer_attested mode, this one is ours." },
@@ -140,15 +146,22 @@ const deliveryMetadata = {
   },
 };
 
-const deliveryEnvelope = (data) => ({ type: "object", required: ["success", "data", "request_metadata"], properties: { success: { const: true }, data, request_metadata: deliveryMetadata } });
+// The route returns the signed receipt BARE, as /witness returns its own. An
+// earlier draft wrapped it in {success, data, request_metadata}; this document
+// kept describing that wrapper after the route dropped it, and neither test
+// noticed because the OpenAPI test asserted the envelope while the HTTP tests
+// asserted the bare body. A documented contract that disagrees with the served
+// one is worse than an undocumented route: it is a lie a client will code against.
+// test/delivery-contract.test.js now binds these two together.
+const deliveryOk = (data) => data;
 const deliveryFailure = (reasons) => ({
   type: "object",
-  required: ["success", "error", "data", "request_metadata"],
+  required: ["reason", "details", "verifier", "served_at"],
   properties: {
-    success: { const: false },
-    error: { type: "object", required: ["reason", "details"], properties: { reason: { type: "string", enum: reasons }, details: { type: "object", required: ["problems"], properties: { problems: { type: "array", items: { type: "string" } }, expected: { description: "The accepted shape (shape errors only)." }, example: { description: "A value to copy (shape errors only)." } } } } },
-    data: { type: "null" },
-    request_metadata: deliveryMetadata,
+    reason: { type: "string", enum: reasons },
+    details: { type: "object", required: ["problems"], properties: { problems: { type: "array", items: { type: "string" } }, expected: { description: "The accepted shape (shape errors only)." }, example: { description: "A value to copy (shape errors only)." } } },
+    verifier: { type: "string", description: "The host that refused; its /pubkey signs receipts it does issue." },
+    served_at: { type: "string", format: "date-time" },
   },
 });
 
@@ -300,7 +313,7 @@ export function openapiDoc(env = process.env) {
           security: [],
           requestBody: body(deliveryRequest, DELIVERY_EXAMPLE),
           responses: {
-            "200": out("Signed delivery receipt (any verdict, including unable_to_verify) in the envelope.", deliveryEnvelope(deliveryReceiptSchema)),
+            "200": out("The signed delivery receipt, bare, exactly as /witness returns its own. Any verdict, including unable_to_verify, is a 200: inability to verify is a result, not a failure.", deliveryOk(deliveryReceiptSchema)),
             "400": out('Request could not be read — nothing graded or signed. reason: "bad_json" (unparseable, bare primitive, or not application/json); "bad_body" (JSON but not an object); "bad_offer", "bad_paid_request", "bad_observation" (that member is missing or off-shape; details.problems names each field, expected and example show the shape); "bad_mode" (observation.mode outside the three evidence modes). observation.artifact must be present — null means nothing came back and is graded, not refused.', deliveryFailure(["bad_json", "bad_body", "bad_offer", "bad_paid_request", "bad_observation", "bad_mode"])),
             "413": out(`Body over ${DELIVERY_MAX_BODY} — reason body_too_large.`, deliveryFailure(["body_too_large"])),
             "500": out('Our defect, never a verdict: "attest_failed" (the model threw), "attest_invalid" (the model returned a receipt without a verdict or its limits, which this route refuses to sign rather than patch), "internal_error".', deliveryFailure(["attest_failed", "attest_invalid", "internal_error"])),

@@ -1,3 +1,7 @@
-node_modules/
+# Bare, not "node_modules/". A trailing slash matches DIRECTORIES ONLY, and a
+# linked worktree symlinks node_modules at a shared install - so the slash form
+# leaves the symlink untracked-and-stageable, and `git add -A` commits it. This
+# form matches directories, symlinks, and nested copies at any depth.
+node_modules
 data/
 .env
