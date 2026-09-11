@@ -111,7 +111,7 @@ const deliveryRequest = {
 
 const deliveryReceiptSchema = {
   type: "object",
-  required: ["schema", "offer_hash", "request_hash", "artifact_hash", "delivery_verdict", "reasons", "evidence_mode", "declared_mode", "spec_origin", "observed_at", "requested_at", "verifier", "this_receipt_proves", "this_receipt_does_not_prove", "attested_at", "receipt"],
+  required: ["schema", "offer_hash", "request_hash", "artifact_hash", "delivery_verdict", "reasons", "evidence_mode", "declared_mode", "spec_origin", "observed_at", "requested_at", "verifier", "this_receipt_proves", "this_receipt_does_not_prove", "attested_at", "signer", "receipt"],
   properties: {
     schema: { type: "string", example: "delivery-attestation/v0" },
     offer_hash: { type: "string", description: "sha256 of the deep-canonical offer." },
@@ -138,6 +138,7 @@ const deliveryReceiptSchema = {
     this_receipt_proves: { type: "array", items: { type: "string" }, description: "The limits of the evidence mode, verbatim from the model and inside the signature. Read them before acting on the verdict." },
     this_receipt_does_not_prove: { type: "array", items: { type: "string" }, description: "What no delivery receipt establishes: funds recoverable, seller honest in general, buyer received it, order fulfilled end to end, dispute outcome. Inside the signature." },
     attested_at: { type: "string", format: "date-time", description: "When this host signed; observed_at is the caller's clock in buyer_attested mode, this one is ours." },
+    signer: { type: "string", description: "SPKI DER base64 of the ed25519 key that signed, identical to GET /pubkey. Part of the signed body: verifyDelivery refuses a receipt whose signer is not the key you trust." },
     receipt: { type: "string", description: "ed25519 signature over deep canonical JSON of every other field; verify with GET /pubkey." },
   },
 };

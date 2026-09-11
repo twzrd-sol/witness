@@ -1,5 +1,5 @@
 import express from "express";
-import { signReceipt } from "../receipt.js";
+import { pubkeyB64, signReceipt } from "../receipt.js";
 import { SPEC_ORIGINS, hashValue, offerHash, requestHash } from "../delivery.js";
 
 // Lazily resolved so a process without the verifier fails loudly at use, not at boot.
@@ -247,7 +247,10 @@ export async function handleDeliveryAttest(body, deps = {}) {
     (deps.log ?? console.error)("delivery: attest returned an invalid receipt", invalid);
     return fail(500, "attest_invalid", { problems: invalid });
   }
-  const signed = signReceipt({ ...receipt, attested_at: meta.served_at }, deps.key);
+  // signer is part of the signed body: verifyDelivery (the offline verifier) refuses a
+  // receipt whose signer is not the key it was told to trust, so a route that omits it
+  // issues receipts its own library cannot verify.
+  const signed = signReceipt({ ...receipt, signer: pubkeyB64(deps.key), attested_at: meta.served_at }, deps.key);
   return { status: 200, json: signed };
 }
 
