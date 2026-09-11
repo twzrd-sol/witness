@@ -76,6 +76,11 @@ export const OFFERS = Object.freeze({
   }),
 });
 
+/** Every offer as structured data, in catalog order. */
+export function listOffers(catalog = OFFERS) {
+  return Object.values(catalog).map(buildOfferJson);
+}
+
 export function getOffer(id, catalog = OFFERS) {
   return typeof id === "string" ? catalog[id] ?? null : null;
 }

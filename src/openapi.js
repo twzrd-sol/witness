@@ -100,6 +100,14 @@ export function openapiDoc(env = process.env) {
           },
         },
       },
+      "/api/offers": {
+        get: {
+          summary: "Consumer offer catalog",
+          description: "Every offer as structured data, {offers: [...]}, in catalog order — the record set a shopping agent's search_products reads. Same per-offer shape as GET /api/offers/{id}.",
+          security: [],
+          responses: { "200": out("Offer catalog", { type: "object" }) },
+        },
+      },
       "/api/offers/{id}": {
         get: {
           summary: "Consumer offer as structured data",
