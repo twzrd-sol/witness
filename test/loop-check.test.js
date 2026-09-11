@@ -20,6 +20,9 @@ import { checkRun, record, score } from "../scripts/loop-check.mjs";
 const OFFER = OFFERS["outbid-reader-scrape"];
 const PAYER = "33W8HJrqCPyJsaBnVPd24AVK2wYUf3VLLutXppyAyWMo";
 const SIG = "5VfyDqk2m4kK3kFq1Ls9DbqB4o1GmZ1tZ1zjJcE7yq9Gb9kGmv2nZ3rYQwq3eYp8vN1sLxM2cK4hR7tT6uW9aB1c";
+const ATTEST_SIG = "4AttestSettlementSignature11111111111111111111111111111111111111111111111111111111111";
+const HOST_PAYTO = "F1AbWuXJcBT9arW9wc6Xr2vom5NBtngWsz6Ht16jRBLM";
+const HOST_ACCEPTS = [{ scheme: "exact", network: "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp", amount: "10000", asset: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", payTo: HOST_PAYTO }];
 const ARTIFACT = { ok: true, title: "Example Domain", content: "# Example Domain", markdown: "# Example Domain", word_count: 2 };
 
 const liveAccepts = OFFER.accepts.map((a) => ({ ...a, maxTimeoutSeconds: 300 }));
@@ -38,14 +41,18 @@ function fakeTx({ payTo, amount, payer = PAYER, err = null, mint = OFFER.accepts
   };
 }
 
-/** fetch used by the verifier: /pubkey and /api/offers go to the in-process host; RPC is faked. */
-function verifierFetch(base, tx) {
+/** fetch used by the verifier: /pubkey and /api/offers go to the in-process host; RPC is
+ *  faked per signature; the well-known descriptor can be overridden to simulate a paywalled host. */
+function verifierFetch(base, tx, { attestTx = undefined, hostAccepts = null } = {}) {
   return async (url, init) => {
+    if (typeof url === "string" && url.endsWith("/.well-known/x402") && hostAccepts !== null) return { json: async () => ({ accepts: hostAccepts }) };
     if (typeof url === "string" && url.startsWith(base)) return fetch(url, init);
     if (url === "rpc://fake") {
       const body = JSON.parse(init.body);
       assert.equal(body.method, "getTransaction");
-      return { json: async () => ({ jsonrpc: "2.0", id: 1, result: tx }) };
+      const [signature] = body.params;
+      const result = signature === ATTEST_SIG ? (attestTx === undefined ? null : attestTx) : tx;
+      return { json: async () => ({ jsonrpc: "2.0", id: 1, result }) };
     }
     throw new Error(`unexpected fetch ${url}`);
   };
@@ -62,7 +69,7 @@ async function withHost(fn) {
 }
 
 /** Assemble a run dir exactly as the actor writes it, with the paid call faked. */
-async function buildRun(base, { artifact = ARTIFACT, settlementSig = SIG, mutate = () => {} } = {}) {
+async function buildRun(base, { artifact = ARTIFACT, settlementSig = SIG, attestSig = null, mutate = () => {} } = {}) {
   const dir = mkdtempSync(path.join(os.tmpdir(), "wit-run-"));
   const write = (name, v) => writeFileSync(path.join(dir, name), JSON.stringify(v, null, 2));
   const quoteRes = await fetch(`${base}/api/quotes`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ offer_id: OFFER.id, input: { url: "https://example.com" } }) });
@@ -85,6 +92,7 @@ async function buildRun(base, { artifact = ARTIFACT, settlementSig = SIG, mutate
   write("attest-request.json", attestBody);
   const attestRes = await fetch(`${base}/delivery/attest`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(attestBody) });
   write("receipt.json", { status: attestRes.status, body: await attestRes.json(), at: new Date().toISOString() });
+  if (attestSig) write("attest-settlement.json", { header_present: true, decoded: { success: true, transaction: attestSig, network: HOST_ACCEPTS[0].network, payer: PAYER }, payer: PAYER });
   mutate(dir, write);
   return dir;
 }
@@ -97,7 +105,28 @@ test("a complete, honest run is DONE: every predicate passes from recomputed evi
     const result = await checkRun(dir, { fetch: verifierFetch(base, goodTx()), rpc: "rpc://fake", base });
     assert.deepEqual(result.failed, [], JSON.stringify(result.predicates, null, 1));
     assert.equal(result.done, true);
-    assert.equal(result.predicates.length, 10);
+    assert.equal(result.predicates.length, 11);
+    assert.equal(result.predicates.find((p) => p.name === "attest_settled").detail, "host advertises no paywall; attest served unpaid");
+  });
+});
+
+test("on a paywalled host the attestation's own settlement must be on chain to the host's payee", async () => {
+  await withHost(async (base) => {
+    const attestTx = fakeTx({ payTo: HOST_PAYTO, amount: "10000" });
+    const paid = await buildRun(base, { attestSig: ATTEST_SIG });
+    const ok = await checkRun(paid, { fetch: verifierFetch(base, goodTx(), { attestTx, hostAccepts: HOST_ACCEPTS }), rpc: "rpc://fake", base });
+    assert.deepEqual(ok.failed, [], JSON.stringify(ok.predicates.filter((p) => !p.pass)));
+    const unpaid = await buildRun(base);
+    const missing = await checkRun(unpaid, { fetch: verifierFetch(base, goodTx(), { hostAccepts: HOST_ACCEPTS }), rpc: "rpc://fake", base });
+    assert.ok(missing.failed.includes("attest_settled"));
+    assert.equal(missing.done, false);
+    const ghost = await checkRun(paid, { fetch: verifierFetch(base, goodTx(), { attestTx: null, hostAccepts: HOST_ACCEPTS }), rpc: "rpc://fake", base });
+    assert.ok(ghost.failed.includes("attest_settled"));
+    const wrong = await checkRun(paid, { fetch: verifierFetch(base, goodTx(), { attestTx: fakeTx({ payTo: "11111111111111111111111111111111", amount: "10000" }), hostAccepts: HOST_ACCEPTS }), rpc: "rpc://fake", base });
+    assert.ok(wrong.failed.includes("attest_settled"));
+    const reused = await buildRun(base, { attestSig: SIG });
+    const dup = await checkRun(reused, { fetch: verifierFetch(base, goodTx(), { hostAccepts: HOST_ACCEPTS }), rpc: "rpc://fake", base });
+    assert.ok(dup.failed.includes("attest_settled"));
   });
 });
 
@@ -105,7 +134,7 @@ test("INCOMPLETE is the default: an empty run dir fails every predicate and is n
   const dir = mkdtempSync(path.join(os.tmpdir(), "wit-empty-"));
   const result = await checkRun(dir, { fetch: async () => { throw new Error("no network"); }, rpc: "rpc://fake", base: "http://127.0.0.1:1" });
   assert.equal(result.done, false);
-  assert.equal(result.failed.length, 10);
+  assert.equal(result.failed.length, 11);
 });
 
 test("a tampered artifact after attestation is caught: receipt_binds_run and the verdict fall", async () => {

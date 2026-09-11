@@ -14,3 +14,8 @@ node scripts/loop-check.mjs --run=docs/consumer/evidence/loop-run-2026-09-11 --b
 
 It needs only these files, `GET /pubkey`, and a Solana RPC. Change one byte of
 `response.json` and it answers `INCOMPLETE (receipt_binds_run)`.
+
+Note: this run was attested before #34 put the attest route behind the paywall,
+so it carries no `attest-settlement.json`. Under the eleven-predicate verifier
+against today's host it answers `INCOMPLETE (attest_settled)`, which is the
+correct reading of the current rules: the next run must pay for its attestation.
