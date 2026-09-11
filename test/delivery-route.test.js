@@ -9,6 +9,7 @@ import { createHostApp } from "../src/listen.js";
 import { openapiDoc } from "../src/openapi.js";
 import { canonical, generateProcessKey } from "../src/receipt.js";
 import { DELIVERY_VERDICTS, EXAMPLE_BODY, MODES, handleDeliveryAttest } from "../src/routes/delivery.js";
+import { attest as realAttest, verifyDelivery } from "../src/delivery.js";
 
 /** The evidence model lives in another lane (src/delivery.js). This fake answers the router's
  *  contract — attest({offer, request, observation, seller_verification, verifier, max_staleness_seconds}) -> unsigned receipt
@@ -89,11 +90,12 @@ test("POST /delivery/attest: signed receipt in the envelope, model fields verbat
     assert.equal(data.delivery_verdict, "delivered");
     assert.equal(data.evidence_mode, "seller_integrated");
     assert.equal(data.evidence_mode, "seller_integrated");
-    assert.deepEqual(Object.keys(data).filter((k) => !(k in emitted)).sort(), ["attested_at", "receipt"], "the route adds exactly attested_at and the signature");
+    assert.deepEqual(Object.keys(data).filter((k) => !(k in emitted)).sort(), ["attested_at", "receipt", "signer"], "the route adds exactly attested_at, the signer, and the signature");
     assert.match(data.attested_at, /^\d{4}-\d{2}-\d{2}T/);
 
     // The signature covers every field, and GET /pubkey is enough to check it offline.
     const { pubkey } = await (await fetch(`${base}/pubkey`)).json();
+    assert.equal(data.signer, pubkey, "signer is the key GET /pubkey serves, and it is inside the signed body");
     assert.equal(verifyOffline(data, pubkey), true);
     assert.equal(verifyOffline({ ...data, delivery_verdict: "contradicted" }, pubkey), false, "a flipped verdict does not verify");
     assert.equal(verifyOffline({ ...data, this_receipt_does_not_prove: [] }, pubkey), false, "stripped limits do not verify");
@@ -294,4 +296,25 @@ test("openapi documents /delivery/attest: public, BARE receipt, every reason dis
   assert.deepEqual(reasons("503"), ["attest_not_wired"]);
   const all = ["400", "413", "500", "503"].flatMap(reasons);
   assert.equal(new Set(all).size, all.length, "reasons are distinct across statuses");
+});
+
+test("the receipt the route serves verifies with the library's own offline verifier, not only a hand-rolled check", async () => {
+  // Before signer rode in the signed body, verifyDelivery refused every receipt the live
+  // route issued (signer_mismatch) while examples verified with their own reimplementation.
+  const server = createHostApp({ OBSERVATIONS_DIR: mkdtempSync(path.join(os.tmpdir(), "wit-verify-")) }, { attest: realAttest }).listen(0, "127.0.0.1");
+  await new Promise((r) => server.once("listening", r));
+  try {
+    const base = `http://127.0.0.1:${server.address().port}`;
+    const res = await post(base, example());
+    assert.equal(res.status, 200);
+    const receipt = await res.json();
+    const { pubkey } = await (await fetch(`${base}/pubkey`)).json();
+    const key = createPublicKey({ key: Buffer.from(pubkey, "base64"), format: "der", type: "spki" });
+    const v = verifyDelivery(receipt, key);
+    assert.equal(v.valid, true, v.reason);
+    assert.equal(verifyDelivery({ ...receipt, signer: "AAAA" }, key).valid, false, "an edited signer breaks the signature");
+    assert.equal(verifyDelivery(receipt, generateProcessKey().publicKey).valid, false, "a different trusted key refuses it");
+  } finally {
+    await new Promise((r) => server.close(r));
+  }
 });
