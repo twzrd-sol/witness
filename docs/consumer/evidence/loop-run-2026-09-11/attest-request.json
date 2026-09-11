@@ -1,0 +1,36 @@
+{
+  "offer": {
+    "resource_url": "https://reader.outbid.sh/scrape?url=https%3A%2F%2Fexample.com",
+    "deliverable_class": "data_json",
+    "price_usdc": 0.005,
+    "spec": {
+      "required_fields": {
+        "title": "string",
+        "markdown": "string",
+        "word_count": "number"
+      }
+    },
+    "spec_origin": "buyer_authored"
+  },
+  "request": {
+    "request_body": {
+      "url": "https://example.com"
+    },
+    "settlement_ref": "5e6MJBq7mQoaR5oGmQ6EcvqHZ7KVvftkmnhqZe18edEGEcdtQ3wcprNYgkxt8ehNxBHhT3KU7cbCM8dQbN7e11yA",
+    "requested_at": "2026-09-11T08:36:54.213Z"
+  },
+  "observation": {
+    "artifact": {
+      "ok": true,
+      "title": "Example Domain",
+      "content": "This domain is for use in documentation examples without needing permission. Avoid use in operations.\n\n[Learn more](https://iana.org/domains/example)",
+      "markdown": "This domain is for use in documentation examples without needing permission. Avoid use in operations.\n\n[Learn more](https://iana.org/domains/example)",
+      "word_count": 16
+    },
+    "observed_at": "2026-09-11T08:36:55.848Z",
+    "mode": "buyer_attested",
+    "http_status": 200,
+    "seller_signature": null,
+    "notes": []
+  }
+}

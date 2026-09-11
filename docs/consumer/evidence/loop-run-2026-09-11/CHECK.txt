@@ -1,0 +1,11 @@
+PASS  gate_passed            challenge_matches_catalog
+PASS  request_matches        https://reader.outbid.sh/scrape?url=https%3A%2F%2Fexample.com
+PASS  paid_call_ok           200, 381 bytes
+PASS  settlement_on_chain    F1AbWuXJcBT9arW9wc6Xr2vom5NBtngWsz6Ht16jRBLM +5000 atomic, tx 5e6MJBq7mQoa…
+PASS  receipt_verifies       buyer_attested
+PASS  receipt_binds_run      offer, request, artifact hashes recomputed and equal
+PASS  settlement_bound       5e6MJBq7mQoa…
+PASS  spec_holds             title,markdown,word_count
+PASS  offer_matches_catalog  outbid-reader-scrape
+PASS  verdict_delivered      buyer_attested
+DONE

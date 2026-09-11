@@ -1,0 +1,54 @@
+{
+  "status": 200,
+  "body": {
+    "schema": "delivery-attestation/v0",
+    "offer_hash": "ec59e2ebe698023203d20478911f83dfe7d1064d77c58586741d49d86bcaf3f2",
+    "request_hash": "afee968e444ee7aac68605047597c4afe47751f4794a4dc640c45321d9eafd49",
+    "artifact_hash": "cf90274d6dac71b4edf929e05daa89a1ce4d0814ece1fa8a0236f520fe39dd4f",
+    "delivery_verdict": "delivered",
+    "reasons": [],
+    "evidence_mode": "buyer_attested",
+    "declared_mode": "buyer_attested",
+    "observed_at": "2026-09-11T08:36:55.848Z",
+    "requested_at": "2026-09-11T08:36:54.213Z",
+    "settlement_ref": "5e6MJBq7mQoaR5oGmQ6EcvqHZ7KVvftkmnhqZe18edEGEcdtQ3wcprNYgkxt8ehNxBHhT3KU7cbCM8dQbN7e11yA",
+    "http_status": 200,
+    "seller_verification": {
+      "verified": false,
+      "reason": "verification_not_performed",
+      "rail": null,
+      "checked": [],
+      "signer": null,
+      "detail": null
+    },
+    "seller_signature_covers": [
+      "offer_hash",
+      "request_hash",
+      "artifact_hash"
+    ],
+    "verifier": "witness.outbid.sh",
+    "spec_origin": "buyer_authored",
+    "resource_url": "https://reader.outbid.sh/scrape?url=https%3A%2F%2Fexample.com",
+    "deliverable_class": "data_json",
+    "price_usdc": 0.005,
+    "max_staleness_seconds": 300,
+    "observation_gap_seconds": 1.635,
+    "within_freshness_window": true,
+    "this_receipt_proves": [
+      "The artifact was presented by the buyer, not observed from the seller.",
+      "Does not prove the seller emitted it, nor that this request was paid.",
+      "A buyer able to fabricate an artifact can obtain a 'contradicted' verdict."
+    ],
+    "this_receipt_does_not_prove": [
+      "funds are recoverable",
+      "the seller is honest in general",
+      "the buyer received the artifact",
+      "an order was fulfilled end to end",
+      "a dispute would be resolved in anyone's favour"
+    ],
+    "signer": "MCowBQYDK2VwAyEAsNLRfVqG4dFcfD9/OP8BSKTBRlTEOWhg19kHTNfyQlg=",
+    "attested_at": "2026-09-11T08:36:55.889Z",
+    "receipt": "K9ATXr1+NvC981mIaFNkRMdQMQ06cajtmEOevv1CwKEpK4VQRVTMdOjLVLLV5hE036MwOuKOzoqU60FyKlQZBw=="
+  },
+  "at": "2026-09-11T08:36:55.929Z"
+}
