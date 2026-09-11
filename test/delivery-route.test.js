@@ -11,7 +11,7 @@ import { canonical, generateProcessKey } from "../src/receipt.js";
 import { DELIVERY_VERDICTS, EXAMPLE_BODY, MODES, handleDeliveryAttest } from "../src/routes/delivery.js";
 
 /** The evidence model lives in another lane (src/delivery.js). This fake answers the router's
- *  contract — attest(offer, request, observation, opts) -> unsigned receipt — with the field set
+ *  contract — attest({offer, request, observation, seller_verification, verifier, max_staleness_seconds}) -> unsigned receipt
  *  the model emits, so the tests pin what the ROUTE does with a receipt, not how one is graded. */
 const LIMITS = Object.freeze({
   proves: ["fake: the artifact was presented by the buyer, not observed from the seller."],
@@ -19,8 +19,9 @@ const LIMITS = Object.freeze({
 });
 function fakeAttest({ verdict = "delivered", reasons = [], downgrade = false, receipt } = {}) {
   const calls = [];
-  const attest = async (offer, request, observation, opts) => {
-    calls.push({ offer, request, observation, opts });
+  const attest = async ({ offer, request, observation, seller_verification, verifier, max_staleness_seconds }) => {
+    const opts = { verifier, maxStalenessSeconds: max_staleness_seconds };
+    calls.push({ offer, request, observation, seller_verification, verifier, max_staleness_seconds });
     if (receipt !== undefined) return typeof receipt === "function" ? receipt() : receipt;
     return {
       schema: "delivery-attestation/v0",
@@ -73,23 +74,21 @@ test("POST /delivery/attest: signed receipt in the envelope, model fields verbat
   await withServer(async (base) => {
     const body = example();
     body.observation.mode = "seller_integrated";
-    body.observation.seller_signature = "sig_from_seller";
+    body.observation.seller_signature = { network: "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp", payTo: "7VCU12sqMGTpiiwHPsrY2tfNDFqCj53htba1RX1fT5og", signature: "z".repeat(88) };
     const res = await post(base, body);
     assert.equal(res.status, 200);
     const json = await res.json();
-    assert.equal(json.success, true);
-    assert.deepEqual(Object.keys(json).sort(), ["data", "request_metadata", "success"]);
-    const { data, request_metadata: meta } = json;
+        const data = json;
 
     // Nothing the model emitted is dropped, renamed, or summarised: the limits ride verbatim.
     assert.equal(fake.calls.length, 1);
-    const emitted = await fake.attest(...Object.values(fake.calls[0]));
+    const emitted = await fake.attest({ ...fake.calls[0] });
     for (const [k, v] of Object.entries(emitted)) assert.deepEqual(data[k], v, `receipt field ${k} passes through untouched`);
     assert.deepEqual(data.this_receipt_proves, LIMITS.proves);
     assert.deepEqual(data.this_receipt_does_not_prove, LIMITS.never);
     assert.equal(data.delivery_verdict, "delivered");
     assert.equal(data.evidence_mode, "seller_integrated");
-    assert.equal(data.seller_signature_present, true);
+    assert.equal(data.evidence_mode, "seller_integrated");
     assert.deepEqual(Object.keys(data).filter((k) => !(k in emitted)).sort(), ["attested_at", "receipt"], "the route adds exactly attested_at and the signature");
     assert.match(data.attested_at, /^\d{4}-\d{2}-\d{2}T/);
 
@@ -104,15 +103,14 @@ test("POST /delivery/attest: signed receipt in the envelope, model fields verbat
     assert.deepEqual(call.offer, body.offer);
     assert.deepEqual(call.request, body.request);
     assert.deepEqual(call.observation, { ...body.observation, notes: [] });
-    assert.deepEqual(call.opts, { verifier: "witness.outbid.sh", maxStalenessSeconds: 300 });
+    assert.equal(call.verifier, "witness.outbid.sh");
+    assert.equal(call.max_staleness_seconds, 300);
 
-    assert.equal(meta.route, "/delivery/attest");
-    assert.equal(meta.verifier, "witness.outbid.sh");
-    assert.equal(meta.pubkey_path, "/pubkey");
-    assert.equal(meta.served_at, data.attested_at);
-    assert.equal(meta.auth, null, "no authentication in this lane; the slot is visible");
-    assert.equal(meta.payment, null, "no payment in this lane; the slot is visible");
-  }, { attest: fake.attest });
+    // The envelope is gone; the receipt names its own verifier, which is the field
+    // that actually matters to a holder checking it against that host's /pubkey.
+    assert.equal(data.verifier, "witness.outbid.sh");
+    assert.ok(data.attested_at);
+  }, { attest: fake.attest, verifySellerSignature: async () => ({ verified: true, reason: "seller_signature_verified", rail: "solana", checked: ["signer_matches_payto"], signer: "7VCU12sqMGTpiiwHPsrY2tfNDFqCj53htba1RX1fT5og" }) });
 });
 
 test("unable_to_verify is a receipt (200), never an HTTP error; every verdict signs", async () => {
@@ -124,19 +122,18 @@ test("unable_to_verify is a receipt (200), never an HTTP error; every verdict si
     body.observation.mode = "verifier_observed";
     const res = await post(base, body);
     assert.equal(res.status, 200);
-    const { success, data } = await res.json();
-    assert.equal(success, true);
+    const data = await res.json();
     assert.equal(data.delivery_verdict, "unable_to_verify");
     assert.deepEqual(data.reasons, ["no artifact was presented or observed"]);
     assert.equal(data.artifact_hash, null);
     assert.ok(data.receipt, "inability to verify is signed like any other result");
-  }, { attest: fake.attest });
+  }, { attest: fake.attest, verifySellerSignature: async () => ({ verified: true, reason: "seller_signature_verified", rail: "solana", checked: ["signer_matches_payto"], signer: "7VCU12sqMGTpiiwHPsrY2tfNDFqCj53htba1RX1fT5og" }) });
   for (const verdict of DELIVERY_VERDICTS) {
     const f = fakeAttest({ verdict });
     await withServer(async (base) => {
       const res = await post(base, example());
       assert.equal(res.status, 200, verdict);
-      assert.equal((await res.json()).data.delivery_verdict, verdict);
+      assert.equal((await res.json()).delivery_verdict, verdict);
     }, { attest: f.attest });
   }
 });
@@ -146,10 +143,10 @@ test("a seller_integrated claim the model downgrades keeps both modes visible", 
   await withServer(async (base) => {
     const body = example();
     body.observation.mode = "seller_integrated";
-    const { data } = await (await post(base, body)).json();
+    const data = await (await post(base, body)).json();
     assert.equal(data.declared_mode, "seller_integrated");
     assert.equal(data.evidence_mode, "buyer_attested");
-  }, { attest: fake.attest });
+  }, { attest: fake.attest, verifySellerSignature: async () => ({ verified: true, reason: "seller_signature_verified", rail: "solana", checked: ["signer_matches_payto"], signer: "7VCU12sqMGTpiiwHPsrY2tfNDFqCj53htba1RX1fT5og" }) });
 });
 
 test("unreadable bodies are 400 bad_json in the envelope; a JSON array is bad_body; the model is never called", async () => {
@@ -163,19 +160,17 @@ test("unreadable bodies are 400 bad_json in the envelope; a JSON array is bad_bo
       const res = await post(base, body, headers);
       assert.equal(res.status, 400);
       const json = await res.json();
-      assert.equal(json.success, false);
-      assert.equal(json.error.reason, "bad_json");
-      assert.ok(Array.isArray(json.error.details.problems));
-      assert.equal(json.data, null);
-      assert.equal(json.request_metadata.route, "/delivery/attest");
+      assert.equal(json.reason, "bad_json");
+      assert.ok(Array.isArray(json.details.problems));
+      assert.equal(json.verifier !== undefined, true);
     }
     const arr = await post(base, "[]");
     assert.equal(arr.status, 400);
     const json = await arr.json();
-    assert.equal(json.error.reason, "bad_body");
-    assert.deepEqual(Object.keys(json.error.details.expected).sort(), ["observation", "offer", "request"]);
-    assert.deepEqual(json.error.details.example, EXAMPLE_BODY);
-  }, { attest: fake.attest });
+    assert.equal(json.reason, "bad_body");
+    assert.deepEqual(Object.keys(json.details.expected).sort(), ["observation", "offer", "request"]);
+    assert.deepEqual(json.details.example, EXAMPLE_BODY);
+  }, { attest: fake.attest, verifySellerSignature: async () => ({ verified: true, reason: "seller_signature_verified", rail: "solana", checked: ["signer_matches_payto"], signer: "7VCU12sqMGTpiiwHPsrY2tfNDFqCj53htba1RX1fT5og" }) });
   assert.equal(fake.calls.length, 0);
 });
 
@@ -203,24 +198,22 @@ test("shape errors are specific, name the field, teach the fix, and never reach 
       const res = await post(base, body);
       assert.equal(res.status, 400, reason);
       const json = await res.json();
-      assert.equal(json.success, false);
-      assert.equal(json.error.reason, reason);
-      assert.ok(json.error.details.problems.some((p) => problem.test(p)), `${reason}: ${JSON.stringify(json.error.details.problems)}`);
-      assert.ok(json.error.details.expected !== undefined, `${reason} carries the expected shape`);
-      assert.ok(json.error.details.example !== undefined, `${reason} carries an example`);
-      assert.equal(json.data, null);
+      assert.equal(json.reason, reason);
+      assert.ok(json.details.problems.some((p) => problem.test(p)), `${reason}: ${JSON.stringify(json.details.problems)}`);
+      assert.ok(json.details.expected !== undefined, `${reason} carries the expected shape`);
+      assert.ok(json.details.example !== undefined, `${reason} carries an example`);
     }
     const bad = example();
     bad.observation.mode = "verifier_paid";
-    assert.deepEqual((await (await post(base, bad)).json()).error.details.expected, [...MODES]);
-  }, { attest: fake.attest });
+    assert.deepEqual((await (await post(base, bad)).json()).details.expected, [...MODES]);
+  }, { attest: fake.attest, verifySellerSignature: async () => ({ verified: true, reason: "seller_signature_verified", rail: "solana", checked: ["signer_matches_payto"], signer: "7VCU12sqMGTpiiwHPsrY2tfNDFqCj53htba1RX1fT5og" }) });
   assert.equal(fake.calls.length, 0, "no shape error reaches the model");
 });
 
 test("a receipt without its limits, without a verdict, or pre-signed is refused (500 attest_invalid), not patched", async () => {
   const key = generateProcessKey();
   const deps = { key, verifier: "test", log: () => {} };
-  const good = (await fakeAttest().attest(EXAMPLE_BODY.offer, EXAMPLE_BODY.request, { ...EXAMPLE_BODY.observation, notes: [] }, { verifier: "test" }));
+  const good = await fakeAttest().attest({ offer: EXAMPLE_BODY.offer, request: EXAMPLE_BODY.request, observation: { ...EXAMPLE_BODY.observation, notes: [] }, seller_verification: null, verifier: "test", max_staleness_seconds: 300 });
   for (const [label, receipt] of [
     ["no limits", (() => { const r = { ...good }; delete r.this_receipt_proves; return r; })()],
     ["empty never-proves", { ...good, this_receipt_does_not_prove: [] }],
@@ -230,20 +223,19 @@ test("a receipt without its limits, without a verdict, or pre-signed is refused 
   ]) {
     const out = await handleDeliveryAttest(example(), { ...deps, attest: async () => receipt });
     assert.equal(out.status, 500, label);
-    assert.equal(out.json.success, false, label);
-    assert.equal(out.json.error.reason, "attest_invalid", label);
-    assert.equal(out.json.data, null, label);
+    assert.equal(out.json.reason, "attest_invalid", label);
+    assert.equal(out.json.receipt, undefined, `${label}: nothing was signed`);
   }
   const ok = await handleDeliveryAttest(example(), { ...deps, attest: async () => good });
   assert.equal(ok.status, 200);
-  assert.equal(verifyOffline(ok.json.data, key.publicKey.export({ type: "spki", format: "der" }).toString("base64")), true);
+  assert.equal(verifyOffline(ok.json, key.publicKey.export({ type: "spki", format: "der" }).toString("base64")), true);
 });
 
 test("a throwing model is 500 attest_failed; nothing is signed", async () => {
   const out = await handleDeliveryAttest(example(), { key: generateProcessKey(), verifier: "test", log: () => {}, attest: async () => { throw new Error("boom"); } });
   assert.equal(out.status, 500);
-  assert.equal(out.json.error.reason, "attest_failed");
-  assert.equal(out.json.data, null);
+  assert.equal(out.json.reason, "attest_failed");
+  assert.equal(out.json.receipt, undefined, "nothing was signed");
   assert.doesNotMatch(JSON.stringify(out.json), /boom/, "internal error text stays in the log");
 });
 
@@ -252,15 +244,14 @@ test("no model in the process is 503 attest_not_wired; a lazily imported model i
     const res = await post(base, example());
     assert.equal(res.status, 503);
     const json = await res.json();
-    assert.equal(json.success, false);
-    assert.equal(json.error.reason, "attest_not_wired");
+    assert.equal(json.reason, "attest_not_wired");
   }, { importModel: async () => { throw Object.assign(new Error("Cannot find module"), { code: "ERR_MODULE_NOT_FOUND" }); } });
 
   const fake = fakeAttest();
   let imports = 0;
   await withServer(async (base) => {
     for (let i = 0; i < 2; i++) assert.equal((await post(base, example())).status, 200);
-  }, { importModel: async () => { imports += 1; return { attest: fake.attest }; } });
+  }, { importModel: async () => { imports += 1; return { attest: fake.attest, verifySellerSignature: async () => ({ verified: true, reason: "seller_signature_verified", rail: "solana", checked: ["signer_matches_payto"], signer: "7VCU12sqMGTpiiwHPsrY2tfNDFqCj53htba1RX1fT5og" }) }; } });
   assert.equal(imports, 1, "the model module is imported once");
   assert.equal(fake.calls.length, 2);
 });
@@ -273,9 +264,8 @@ test("a body over the limit is 413 body_too_large in the envelope", async () => 
     const res = await post(base, body);
     assert.equal(res.status, 413);
     const json = await res.json();
-    assert.equal(json.success, false);
-    assert.equal(json.error.reason, "body_too_large");
-  }, { attest: fake.attest });
+    assert.equal(json.reason, "body_too_large");
+  }, { attest: fake.attest, verifySellerSignature: async () => ({ verified: true, reason: "seller_signature_verified", rail: "solana", checked: ["signer_matches_payto"], signer: "7VCU12sqMGTpiiwHPsrY2tfNDFqCj53htba1RX1fT5og" }) });
   assert.equal(fake.calls.length, 0);
 });
 

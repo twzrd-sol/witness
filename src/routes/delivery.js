@@ -1,5 +1,10 @@
 import express from "express";
 import { signReceipt } from "../receipt.js";
+import { hashValue, offerHash, requestHash } from "../delivery.js";
+
+// Lazily resolved so a process without the verifier fails loudly at use, not at boot.
+let _verifier = null;
+const loadVerifier = async () => (_verifier ??= (await import("../delivery-signature.js")).verifySellerSignature);
 
 /**
  * Delivery attestation surface (standalone router, mounted in ../server.js
@@ -36,8 +41,8 @@ import { signReceipt } from "../receipt.js";
  * (500 attest_invalid), never patched.
  *
  * Envelope (this route only; the rest of the host answers bare bodies):
- *   200      { success: true,  data: <signed receipt>, request_metadata }
- *   4xx/5xx  { success: false, error: { reason, details }, data: null, request_metadata }
+ *   200      the signed receipt, bare, as /witness returns its own
+ *   4xx/5xx  { reason, details, verifier, served_at }
  *   details is always { problems: string[] } plus, on shape errors, expected + example to copy.
  *
  * Reasons (distinct; nothing is graded or signed on any of them):
@@ -91,7 +96,7 @@ export const EXAMPLE_BODY = Object.freeze({
 
 const OFFER_SHAPE = { resource_url: "string", deliverable_class: "string", price_usdc: "number", spec: { required_fields: { "<field>": SPEC_TYPES.join("|") }, must_equal: { "<field>": "<literal>" } } };
 const REQUEST_SHAPE = { request_body: "object", settlement_ref: "string|null", requested_at: "string (ISO-8601)" };
-const OBSERVATION_SHAPE = { artifact: "any JSON value; null = nothing came back (required key)", observed_at: "string (ISO-8601)", mode: MODES.join("|"), http_status: "integer|null", seller_signature: "string|null", notes: "string[]" };
+const OBSERVATION_SHAPE = { artifact: "any JSON value; null = nothing came back (required key)", observed_at: "string (ISO-8601)", mode: MODES.join("|"), http_status: "integer|null", seller_signature: "{network, payTo, signature}|null", notes: "string[]" };
 
 function checkOffer(o) {
   if (!isObj(o)) return ["offer: object required"];
@@ -128,7 +133,16 @@ function checkObservation(o) {
   if (!isStr(o.observed_at)) p.push("observation.observed_at: ISO-8601 string required");
   if (!isStr(o.mode)) p.push("observation.mode: string required");
   if (o.http_status != null && !Number.isInteger(o.http_status)) p.push("observation.http_status: integer or null");
-  if (o.seller_signature != null && typeof o.seller_signature !== "string") p.push("observation.seller_signature: string or null");
+  // Not a bare string. Verifying a seller signature needs the payee and the network
+  // it was paid on, because the whole point is binding the signature to the payTo the
+  // buyer actually paid - a signature with nothing to bind it to proves nothing.
+  if (o.seller_signature != null) {
+    const sig = o.seller_signature;
+    if (typeof sig !== "object" || Array.isArray(sig)) p.push("observation.seller_signature: object or null {network, payTo, signature}");
+    else for (const k of ["network", "payTo", "signature"]) {
+      if (typeof sig[k] !== "string" || !sig[k]) p.push(`observation.seller_signature.${k}: non-empty string`);
+    }
+  }
   if (o.notes !== undefined && !(Array.isArray(o.notes) && o.notes.every((n) => typeof n === "string"))) p.push("observation.notes: array of strings");
   return p;
 }
@@ -158,7 +172,11 @@ export function requestMetadata(deps = {}) {
   };
 }
 
-const failure = (meta) => (status, reason, details) => ({ status, json: { success: false, error: { reason, details }, data: null, request_metadata: meta } });
+// Bare bodies, matching /witness and /api/offers. /witness returns its signed
+// receipt unwrapped and delivery attestation is the same shape, so a consumer
+// verifies both with identical code - an envelope would invite verifying the
+// wrapper instead of the artifact inside it.
+const failure = (meta) => (status, reason, details) => ({ status, json: { reason, details, verifier: meta.verifier, served_at: meta.served_at } });
 
 /** Pure: body in, {status, json} out. The router below is the only HTTP in this file. */
 export async function handleDeliveryAttest(body, deps = {}) {
@@ -183,9 +201,33 @@ export async function handleDeliveryAttest(body, deps = {}) {
   const model = typeof deps.attest === "function" ? deps.attest : typeof deps.loadAttest === "function" ? await deps.loadAttest() : null;
   if (typeof model !== "function") return fail(503, "attest_not_wired", { problems: ["no evidence model in this process"] });
 
+  // The route owns the async half: verify the seller signature here, hand the model
+  // its RESULT. Keeping the model pure and sync is what makes a receipt reproducible
+  // from its own body. A signature that is merely present is not evidence, so the
+  // result - including the reason it failed - is what gets signed into the receipt.
+  let seller_verification = null;
+  if (observation.seller_signature) {
+    const verify = deps.verifySellerSignature ?? (await loadVerifier());
+    const { network, payTo, signature } = observation.seller_signature;
+    try {
+      seller_verification = await verify({
+        network, payTo, signature,
+        offer_hash: offerHash(offer), request_hash: requestHash(request),
+        artifact_hash: observation.artifact === null ? null : hashValue(observation.artifact),
+      });
+    } catch (e) {
+      (deps.log ?? console.error)("delivery: signature verification threw", e && (e.message || e));
+      seller_verification = { verified: false, reason: "verification_threw", rail: null, checked: [] };
+    }
+  }
+
   let receipt;
   try {
-    receipt = await model(offer, request, observation, { verifier: meta.verifier, maxStalenessSeconds: deps.maxStalenessSeconds ?? DEFAULT_MAX_STALENESS_SECONDS });
+    receipt = await model({
+      offer, request, observation, seller_verification,
+      verifier: meta.verifier,
+      max_staleness_seconds: deps.maxStalenessSeconds ?? DEFAULT_MAX_STALENESS_SECONDS,
+    });
   } catch (e) {
     (deps.log ?? console.error)("delivery: attest threw", e && (e.stack || e.message || e));
     return fail(500, "attest_failed", { problems: ["the evidence model threw; nothing was signed"] });
@@ -196,7 +238,7 @@ export async function handleDeliveryAttest(body, deps = {}) {
     return fail(500, "attest_invalid", { problems: invalid });
   }
   const signed = signReceipt({ ...receipt, attested_at: meta.served_at }, deps.key);
-  return { status: 200, json: { success: true, data: signed, request_metadata: meta } };
+  return { status: 200, json: signed };
 }
 
 export function createDeliveryRouter(deps = {}) {

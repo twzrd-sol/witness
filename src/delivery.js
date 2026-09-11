@@ -1,5 +1,9 @@
 import { createHash } from "node:crypto";
 import { canonical, pubkeyB64, signReceipt, verifyReceipt } from "./receipt.js";
+// Resolved through package.json "imports": ./src/delivery-signature.js in
+// production, ./test/stubs/delivery-signature.js under `--conditions=test`. The
+// real module closes payTo -> public key -> signature on both rails; this module
+// only consumes its result and never re-derives the signed message.
 import { effectiveEvidenceMode } from "./delivery-signature.js";
 
 /**
@@ -28,8 +32,14 @@ export const VERDICTS = Object.freeze([DELIVERED, CONTRADICTED, INCOMPLETE, UNAB
 /** Three evidence modes proving three different things. Conflating them is the
  *  whole failure mode, so the mode is a required field and its limits ride along
  *  inside every receipt body rather than being left to the reader. */
+export const SPEC_ORIGINS = Object.freeze(["buyer_authored", "seller_published", "catalog_observed"]);
 export const MODES = Object.freeze(["buyer_attested", "seller_integrated", "verifier_observed"]);
 export const DEFAULT_MAX_STALENESS_SECONDS = 300;
+
+/** What a seller signature covers, and therefore what it does not: observed_at,
+ *  the verifier, the window, and the verdict are the verifier's claims under the
+ *  Witness key alone. Stated in the body so the gap is read, not inferred. */
+export const SELLER_SIGNATURE_COVERS = Object.freeze(["offer_hash", "request_hash", "artifact_hash"]);
 
 export const MODE_LIMITS = Object.freeze({
   buyer_attested: Object.freeze([
@@ -41,6 +51,7 @@ export const MODE_LIMITS = Object.freeze({
     "The seller signed this artifact at emit time for this request.",
     "Does not prove the buyer received it, only that the seller emitted it.",
     "Requires seller opt-in; absence of a receipt is not evidence of fault.",
+    "The seller signature covers offer_hash, request_hash and artifact_hash only; observed_at, the verifier, the window and the verdict are the verifier's claims.",
   ]),
   verifier_observed: Object.freeze([
     "The verifier paid and called the endpoint itself.",
@@ -111,11 +122,19 @@ export function checkSpec(artifact, spec) {
 
   const required = isObject(spec?.required_fields) ? spec.required_fields : {};
   const missing = [], wrong = [];
+  // A spec naming a type this grader does not implement is an UNUSABLE SPEC, not a
+  // seller fault. "integer", "str", "float" are plausible typos, and grading them
+  // as contradicted collapses "we could not tell" into "they did it wrong" - the
+  // exact collapse the four verdicts exist to prevent, and a deniable way for an
+  // accuser to manufacture a contradiction.
+  const unknownTypes = Object.entries(required).filter(([, want]) => !Object.hasOwn(TYPE_OK, want));
+  if (unknownTypes.length) {
+    return { verdict: UNABLE_TO_VERIFY, reasons: unknownTypes.map(([k, want]) => `spec declares unknown type ${canonical(want)} for ${k}; nothing was graded`) };
+  }
   for (const [key, want] of Object.entries(required)) {
     const got = own(artifact, key);
     if (got === undefined) { missing.push(key); continue; }
-    const ok = Object.hasOwn(TYPE_OK, want) ? TYPE_OK[want] : null;
-    if (!ok || !ok(got)) wrong.push(`${key}: expected ${want}, got ${typeName(got)}`);
+    if (!TYPE_OK[want](got)) wrong.push(`${key}: expected ${want}, got ${typeName(got)}`);
   }
   if (wrong.length) return { verdict: CONTRADICTED, reasons: wrong };
   if (missing.length) return { verdict: INCOMPLETE, reasons: missing.map((k) => `missing required field: ${k}`) };
@@ -124,7 +143,13 @@ export function checkSpec(artifact, spec) {
   // {rows:40}, and true never equals 1 (Python's == would say it does).
   const mustEqual = isObject(spec?.must_equal) ? spec.must_equal : {};
   for (const [key, expected] of Object.entries(mustEqual)) {
-    const got = own(artifact, key) ?? null;
+    // Absent is not unequal. The module's own rule is that a field present and
+    // wrong beats a field absent; comparing undefined-as-null would let a
+    // must_equal on a field the offer never required manufacture a contradiction.
+    const got = own(artifact, key);
+    if (got === undefined) {
+      return { verdict: INCOMPLETE, reasons: [`missing field constrained by must_equal: ${key}`] };
+    }
     if (canonical(got) !== canonical(expected)) {
       return { verdict: CONTRADICTED, reasons: [`${key}: expected ${canonical(expected)}, got ${canonical(got)}`] };
     }
@@ -138,17 +163,35 @@ export function checkSpec(artifact, spec) {
 const ISO_WITH_OFFSET = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2})$/;
 const parseIso = (s) => (typeof s === "string" && ISO_WITH_OFFSET.test(s) ? Date.parse(s) : NaN);
 
+/** The seller-signature verification result, in the shape delivery-signature.js
+ *  returns it, normalised so the receipt always carries WHY a mode was granted or
+ *  refused. No result at all is itself a reason: the route never asked. */
+const NOT_VERIFIED = Object.freeze({ verified: false, reason: "verification_not_performed", rail: null, checked: Object.freeze([]), signer: null, detail: null });
+function normaliseVerification(r) {
+  if (!isObject(r)) return { ...NOT_VERIFIED, checked: [] };
+  return {
+    verified: r.verified === true,
+    reason: r.reason ?? null,
+    rail: r.rail ?? null,
+    checked: Array.isArray(r.checked) ? [...r.checked] : [],
+    signer: r.signer ?? null,
+    detail: r.detail ?? null,
+  };
+}
+
 /**
  * Produce an unsigned delivery receipt. Pure: same inputs, same body, so the hash
- * a holder recomputes matches the one that was signed. Signing is attestDelivery's job.
+ * a holder recomputes matches the one that was signed. The seller-signature check
+ * is async and touches a rail, so the route layer awaits verifySellerSignature()
+ * and passes its result in; the model never does I/O. Signing is attestDelivery's job.
  *
- *   offer        { resource_url, deliverable_class, price_usdc, spec }
- *   request      { request_body, settlement_ref, requested_at }
- *   observation  { artifact, observed_at, mode, http_status, signature_check }
- *                signature_check is verifySellerSignature()'s result, or null
- *                artifact null means nothing came back
+ *   offer                { resource_url, deliverable_class, price_usdc, spec }
+ *   request              { request_body, settlement_ref, requested_at }
+ *   observation          { artifact, observed_at, mode, http_status }
+ *                        artifact null means nothing came back
+ *   seller_verification  verifySellerSignature() result, or null when not attempted
  */
-export function attest({ offer, request, observation: obs, verifier, max_staleness_seconds = DEFAULT_MAX_STALENESS_SECONDS }) {
+export function attest({ offer, request, observation: obs, verifier, seller_verification = null, max_staleness_seconds = DEFAULT_MAX_STALENESS_SECONDS }) {
   if (!obs || !MODES.includes(obs.mode)) throw new Error(`delivery_unknown_mode: ${obs?.mode}`);
   if (typeof verifier !== "string" || !verifier) throw new Error("delivery_no_verifier");
   if (!isObject(offer) || !isObject(request)) throw new Error("delivery_bad_input");
@@ -160,31 +203,36 @@ export function attest({ offer, request, observation: obs, verifier, max_stalene
   // long after the request may not be the one that call returned, but a wrong or
   // incomplete artifact stays wrong or incomplete however late it was seen.
   const t0 = parseIso(request.requested_at), t1 = parseIso(obs.observed_at);
-  let stale;
+  let stale, gap_seconds = null;
   if (Number.isNaN(t0) || Number.isNaN(t1)) {
     stale = true;
     reasons = [...reasons, "timestamps unparseable; staleness could not be established"];
   } else {
-    const gap = (t1 - t0) / 1000;
-    stale = gap > max_staleness_seconds || gap < 0;
+    gap_seconds = (t1 - t0) / 1000;
+    stale = gap_seconds > max_staleness_seconds || gap_seconds < 0;
   }
-  if (stale && verdict === DELIVERED) {
+  // Staleness caps EVERY verdict, not only delivered. "This may not be what the
+  // call returned" is as true of a broken artifact as a good one - and applying it
+  // only downward-for-sellers let an accuser recycle a genuinely broken response
+  // from an earlier or unpaid call and keep a clean `contradicted`.
+  if (stale && verdict !== UNABLE_TO_VERIFY) {
     verdict = UNABLE_TO_VERIFY;
     reasons = [...reasons, "artifact observed outside the freshness window for this request; it may not be what this call returned"];
   }
 
-  // seller_integrated claims its strength from a signature that VERIFIES and is
-  // bound to the payTo the buyer actually paid. A signature that is merely
-  // present proves nothing - a dishonest seller would forge any string and earn
-  // the strongest verdict available. The caller runs verifySellerSignature()
-  // (async, so it stays out of this pure function) and passes the result here.
-  // Absent result, absent grant: silence is not a pass.
-  const check = obs.signature_check ?? null;
-  const effective_mode = effectiveEvidenceMode(obs.mode, check);
-  if (obs.mode === "seller_integrated" && effective_mode !== "seller_integrated") {
-    reasons = [...reasons, check
-      ? `declared seller_integrated but the seller signature did not verify (${check.reason}); downgraded to buyer_attested`
-      : "declared seller_integrated but no signature verification was supplied; downgraded to buyer_attested"];
+  // seller_integrated claims its strength from a signature that actually closes
+  // payTo -> key -> bytes. effectiveEvidenceMode grants the label only on
+  // verified === true, so a missing signature and a present-but-invalid one both
+  // fall to buyer_attested - the label is never borrowed. The declared mode and
+  // the verification reason stay beside the effective mode so the refusal is
+  // legible, not a bare downgrade.
+  const seller = normaliseVerification(seller_verification);
+  const effective_mode = effectiveEvidenceMode(obs.mode, seller);
+  if (!MODES.includes(effective_mode) || (effective_mode !== obs.mode && effective_mode !== "buyer_attested")) {
+    throw new Error(`delivery_mode_resolver_contract: ${obs.mode} -> ${effective_mode}`);
+  }
+  if (effective_mode !== obs.mode) {
+    reasons = [...reasons, `declared ${obs.mode} but the seller signature did not verify (${seller.reason}); downgraded to ${effective_mode}`];
   }
 
   return {
@@ -200,22 +248,25 @@ export function attest({ offer, request, observation: obs, verifier, max_stalene
     requested_at: request.requested_at,
     settlement_ref: request.settlement_ref ?? null,
     http_status: obs.http_status ?? null,
-    // Not "was a signature present" - that was the hole. What was CHECKED, and
-    // what the check concluded, so a reader can see why a mode was granted.
-    seller_signature: check === null ? null : {
-      verified: check.verified === true,
-      reason: check.reason ?? null,
-      rail: check.rail ?? null,
-      checked: [...(check.checked ?? [])],
-      signer: check.signer ?? null,
-    },
+    seller_verification: seller,
+    seller_signature_covers: [...SELLER_SIGNATURE_COVERS],
     verifier,
+    // Who wrote the half of the comparison that decides the verdict. A spec the
+    // buyer authored is an opinion until a seller signature over offer_hash makes
+    // the seller a party to it - which is why this is a required, signed field
+    // rather than an assumption a reader has to make.
+    spec_origin: SPEC_ORIGINS.includes(offer.spec_origin) ? offer.spec_origin : "buyer_authored",
     resource_url: offer.resource_url,
     deliverable_class: offer.deliverable_class,
     price_usdc: offer.price_usdc,
     // The window is signed too: a verdict that depends on an unsigned parameter
     // could be re-read under a different window than the one that produced it.
     max_staleness_seconds,
+    // The freshness facts as data, not only as prose in `reasons`. A reader
+    // parsing verdicts should not have to string-match to learn the observation
+    // sat outside the window, or arrived before the request was even made.
+    observation_gap_seconds: gap_seconds,
+    within_freshness_window: gap_seconds === null ? null : !stale,
     this_receipt_proves: [...MODE_LIMITS[effective_mode]],
     this_receipt_does_not_prove: [...NEVER_PROVES],
   };
@@ -249,9 +300,9 @@ const fail = (reason) => ({ valid: false, reason, verdict: null, evidence_mode: 
  * Verify a delivery receipt offline against a key the caller already trusts -
  * never one read from the receipt. Beyond the signature it re-checks the shape the
  * design promises: the schema, a verdict from the closed set, modes from the closed
- * set with the effective one no stronger than a signature supports, the four
- * mandatory bindings, and the limits text. A receipt that verifies but omits what
- * it cannot prove is not a delivery receipt, whoever signed it.
+ * set with seller_integrated backed by a recorded verified=true, the four mandatory
+ * bindings, and the limits text. A receipt that verifies but omits what it cannot
+ * prove is not a delivery receipt, whoever signed it.
  */
 export function verifyDelivery(doc, trustedPublicKey) {
   if (!isObject(doc)) return fail("malformed_receipt");
@@ -263,18 +314,9 @@ export function verifyDelivery(doc, trustedPublicKey) {
   if (doc.signer !== pubkeyB64({ publicKey: trustedPublicKey })) return fail("signer_mismatch");
   if (!VERDICTS.includes(doc.delivery_verdict)) return fail("verdict_unknown");
   if (!MODES.includes(doc.evidence_mode) || !MODES.includes(doc.declared_mode)) return fail("mode_unknown");
-  // A receipt claiming the strongest mode must carry the verification that earned
-  // it - and that verification must say it checked the payTo binding. A receipt
-  // asserting seller_integrated off an unverified or unbound signature is exactly
-  // the forgery this module exists to refuse, even when the Witness signature
-  // over the body is perfectly valid.
-  if (doc.evidence_mode === "seller_integrated") {
-    const sig = doc.seller_signature;
-    if (!isObject(sig) || sig.verified !== true) return fail("mode_unsupported_by_signature");
-    if (!Array.isArray(sig.checked) || !sig.checked.includes("signer_matches_payto")) {
-      return fail("mode_unsupported_by_payto_binding");
-    }
-  }
+  const sv = doc.seller_verification;
+  if (!isObject(sv) || !Array.isArray(sv.checked)) return fail("seller_verification_missing");
+  if (doc.evidence_mode === "seller_integrated" && sv.verified !== true) return fail("mode_unsupported_by_signature");
   const b = binds(doc);
   if (!(b.offer && b.request && b.verifier && b.timestamp)) return fail("binding_incomplete");
   if (!Array.isArray(doc.this_receipt_does_not_prove) || !doc.this_receipt_does_not_prove.length) return fail("limits_missing");
