@@ -92,7 +92,7 @@ export function openapiDoc(env = process.env) {
       "/offers/{id}": {
         get: {
           summary: "Consumer offer page",
-          description: "HTML for one offer: outcome, deliverable, price, license, buy link (merchant-hosted checkout), and the agent task link. Unknown id is 404.",
+          description: "HTML for one offer: outcome, deliverable, rail, price, license, buy link (merchant rail) and the agent task link. Unknown id is 404.",
           security: [],
           responses: {
             "200": textOut("Offer HTML page.", "text/html"),
@@ -103,7 +103,7 @@ export function openapiDoc(env = process.env) {
       "/api/offers/{id}": {
         get: {
           summary: "Consumer offer as structured data",
-          description: "The catalog record for one offer (checkout:merchant_hosted). Unknown id is 404 {reason: offer_not_found}.",
+          description: "The catalog record for one offer. rail:merchant_checkout records carry checkout:merchant_hosted, price_minor/currency/price_kind, cart_url and the Witness method they are verified_by; rail:x402 records carry checkout:x402, price {amount_atomic, asset, usd}, the resource template and the accepts[] the catalog vouches for. Unknown id is 404 {reason: offer_not_found}.",
           security: [],
           responses: {
             "200": out("Offer", { type: "object" }),
@@ -114,7 +114,7 @@ export function openapiDoc(env = process.env) {
       "/api/offers/{id}/task.json": {
         get: {
           summary: "Copyable agent task for one offer",
-          description: "Intent, requirements, merchant links, and price for an agent to execute the purchase. Unknown id is 404.",
+          description: "Intent, requirements, merchant/resource, and price for an agent to execute the purchase; authorization:null. Unknown id is 404.",
           security: [],
           responses: {
             "200": out("Agent task", { type: "object" }),
@@ -124,14 +124,17 @@ export function openapiDoc(env = process.env) {
       },
       "/api/quotes": {
         post: {
-          summary: "Build a cart and get the merchant checkout URL",
-          description: "prepare_checkout for one offer: returns the cart (items, subtotal, currency) and a checkout_url at the merchant where payment completes. Unknown id is 404; missing id or bad quantity is 400.",
+          summary: "Build a cart and get the gated checkout",
+          description: "prepare_checkout for one offer. merchant_checkout: Witness observes the merchant's live product record through the free quote path; only a supported verdict returns cart + checkout_url (200). contradicted, incomplete, or unverifiable withholds the URL (409, gate.reason). x402: {input:{url}} resolves the resource, the live 402 is probed, and only accepts[] whose network/payee/amount match the catalog are returned (200); a changed payee withholds (409). Gate results are cached per offer for 5 minutes; a cache miss is subject to the POST /quote per-IP limiter (429). Never pays, reserves, signs, or writes an observation. Unknown id is 404; missing id, bad quantity, or bad input.url is 400.",
           security: [],
-          requestBody: body({ type: "object", required: ["offer_id"], properties: { offer_id: { type: "string", example: "pixel-surplus-vintage-polaroid" }, quantity: { type: "integer", minimum: 1, maximum: 99, default: 1 } } }, { offer_id: "pixel-surplus-vintage-polaroid", quantity: 1 }),
+          requestBody: body({ type: "object", required: ["offer_id"], properties: { offer_id: { type: "string", example: "pixel-surplus-vintage-polaroid" }, quantity: { type: "integer", minimum: 1, maximum: 99, default: 1, description: "merchant_checkout offers only" }, input: { type: "object", description: "x402 offers only", properties: { url: { type: "string", format: "uri" } } } } }, { offer_id: "pixel-surplus-vintage-polaroid", quantity: 1 }),
           responses: {
-            "200": out("Cart and checkout URL", { type: "object" }),
-            "400": out("Missing offer_id or bad quantity", { type: "object" }),
+            "200": out("Gate passed: cart and checkout_url, or request and live accepts[]", { type: "object" }),
+            "400": out("Missing offer_id, bad quantity, or bad input.url", { type: "object" }),
             "404": out("Unknown offer", { type: "object" }),
+            "409": out("Gate withheld: live source contradicts the catalog or could not be verified", { type: "object" }),
+            "429": out("Gate rate limited (shares the POST /quote per-IP limiter)", { type: "object" }),
+            "503": out("Gate not wired (no retrieve/probe configured)", { type: "object" }),
           },
         },
       },
