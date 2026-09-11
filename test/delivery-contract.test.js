@@ -22,6 +22,7 @@ import { canonical, generateProcessKey, pubkeyB64 } from "../src/receipt.js";
 import { openapiDoc } from "../src/openapi.js";
 import { createDeliveryRouter } from "../src/routes/delivery.js";
 import { SPEC_ORIGINS } from "../src/delivery.js";
+import { SIGNING_DOMAIN } from "../src/delivery-signature.js";
 
 const KEY = generateProcessKey();
 
@@ -123,4 +124,126 @@ test("spec_origin is inside the signature, not decoration beside it", async () =
   };
   assert.equal(check(served), true);
   assert.equal(check({ ...served, spec_origin: "buyer_authored" }), false, "provenance could be edited after signing");
+});
+
+// ---------------------------------------------------------------------------
+// The REQUEST direction. Everything above this line binds the documented
+// RESPONSE to the served one. That is the half #31 fixed, and it is not the
+// half that broke next: the document typed observation.seller_signature as
+// `string | null` while the route had always required
+// {network, payTo, signature}, and offer.spec_origin was accepted, validated
+// and signed while appearing on no request surface at all - not the schema, not
+// the route's own 400 `expected`, not the reference integrations. A client
+// coding against the document could not have produced a request the route
+// accepts in the strong mode, and the two reference examples that were supposed
+// to show the way had rotted into a signing scheme the route never accepted.
+//
+// Response-only drift detection is drift that ships in the other direction.
+
+/** The route's own statement of what it accepts, read off the wire rather than imported. */
+const expectedShapes = () =>
+  withServer(async (base) => (await post(base, [])).json()).then((r) => {
+    assert.equal(r.reason, "bad_body", "a non-object body should return the full expected shape");
+    return r.details.expected;
+  });
+
+const requestSchema = () =>
+  openapiDoc({ PUBLIC_BASE_URL: "https://witness.test" })
+    .paths["/delivery/attest"].post.requestBody.content["application/json"].schema;
+
+test("every member the route names in `expected` is documented, and every documented one is named", async () => {
+  const shapes = await expectedShapes();
+  const documented = requestSchema().properties;
+  for (const member of ["offer", "request", "observation"]) {
+    const served = Object.keys(shapes[member]).sort();
+    const doc = Object.keys(documented[member].properties ?? {}).sort();
+    assert.deepEqual(doc, served, `${member}: documented fields and the fields the route tells a caller to send disagree`);
+  }
+});
+
+test("the documented request example is a request the route actually accepts", async () => {
+  // The example is what most integrators copy. If it does not round-trip, the
+  // document is teaching a shape the server refuses.
+  const example = requestSchema().example ?? openapiDoc({ PUBLIC_BASE_URL: "https://witness.test" })
+    .paths["/delivery/attest"].post.requestBody.content["application/json"].example;
+  const res = await withServer(async (base) => post(base, structuredClone(example)));
+  assert.equal(res.status, 200, "the documented example was refused by the route it documents");
+});
+
+test("seller_signature is documented as the object the route requires, not a string", async () => {
+  const sig = requestSchema().properties.observation.properties.seller_signature;
+  assert.deepEqual(sig.type, ["object", "null"], "documenting it as a string describes a request the route refuses");
+  assert.deepEqual([...sig.required].sort(), ["network", "payTo", "signature"], "the binding fields are what make a signature verifiable");
+
+  // Documented as an object because that is what is enforced. A bare string -
+  // exactly what the old document described - must be refused.
+  const body = structuredClone(BODY);
+  body.observation.seller_signature = "ZmFrZSBzaWduYXR1cmU";
+  const res = await withServer(async (base) => post(base, body));
+  assert.equal(res.status, 400, "a string signature must be refused, not silently ignored");
+
+  // ...and each documented-required key must actually be required, by name.
+  for (const key of sig.required) {
+    const partial = structuredClone(BODY);
+    partial.observation.seller_signature = { network: "solana", payTo: "x", signature: "y" };
+    delete partial.observation.seller_signature[key];
+    const r = await withServer(async (base) => (await post(base, partial)).json());
+    assert.equal(r.reason, "bad_observation", `omitting seller_signature.${key} was accepted`);
+    assert.ok(
+      r.details.problems.some((p) => p.includes(`seller_signature.${key}`)),
+      `omitting seller_signature.${key} was refused without naming it: ${JSON.stringify(r.details.problems)}`,
+    );
+  }
+});
+
+test("the documented spec_origin values are exactly the ones the route accepts", async () => {
+  const documented = requestSchema().properties.offer.properties.spec_origin;
+  assert.deepEqual([...documented.enum].sort(), [...SPEC_ORIGINS].sort());
+  assert.equal(documented.default, "buyer_authored", "the documented default must match the receipt's default");
+  for (const origin of documented.enum) {
+    const body = structuredClone(BODY);
+    body.offer.spec_origin = origin;
+    const res = await withServer(async (base) => post(base, body));
+    assert.equal(res.status, 200, `documented spec_origin ${origin} was refused`);
+  }
+});
+
+test("every field documented as required on a request member is required by the route", async () => {
+  // Optional-in-practice but documented-required is the same class of lie as an
+  // undocumented served field, just pointed the other way.
+  const documented = requestSchema().properties;
+  for (const member of ["offer", "request", "observation"]) {
+    for (const key of documented[member].required ?? []) {
+      const body = structuredClone(BODY);
+      delete body[member][key];
+      const res = await withServer(async (base) => post(base, body));
+      assert.equal(res.status, 400, `${member}.${key} is documented as required but the route accepted its absence`);
+    }
+  }
+});
+
+test("the document names the real signing domain, spelled out, not a placeholder", async () => {
+  // It named `${SIGNING_DOMAIN}` - inside a double-quoted string, so the
+  // placeholder shipped verbatim and the published document instructed sellers
+  // to sign over the characters of the variable name. Nothing imports the
+  // constant here on purpose: src/routes/delivery.js loads the verifier (and
+  // viem with it) lazily, and the document should not undo that at boot. This
+  // test is what keeps the spelled-out copy honest instead.
+  const sig = requestSchema().properties.observation.properties.seller_signature;
+  assert.ok(sig.description.includes(SIGNING_DOMAIN), `the documented signing domain is not ${SIGNING_DOMAIN}: ${sig.description}`);
+  assert.ok(!/\$\{/.test(sig.description), "an uninterpolated placeholder shipped in the published description");
+
+  // And the same for every description on the route: a placeholder anywhere is
+  // a published lie, just a quieter one.
+  const post = openapiDoc({ PUBLIC_BASE_URL: "https://witness.test" }).paths["/delivery/attest"].post;
+  const placeholders = [];
+  const walk = (node, at) => {
+    if (!node || typeof node !== "object") return;
+    for (const [k, v] of Object.entries(node)) {
+      if (typeof v === "string" && /\$\{/.test(v)) placeholders.push(`${at}.${k}`);
+      else if (v && typeof v === "object") walk(v, `${at}.${k}`);
+    }
+  };
+  walk(post, "post");
+  assert.deepEqual(placeholders, [], `uninterpolated placeholders in the published document: ${placeholders.join(", ")}`);
 });

@@ -71,6 +71,7 @@ const deliveryRequest = {
         deliverable_class: { type: "string", description: "e.g. data_json, compute_result, issued_credential, verification_result, financial_action.", example: "data_json" },
         price_usdc: { type: "number", minimum: 0, example: 0.28 },
         spec: { type: "object", description: "The delivery contract: required_fields (field -> type) the artifact must carry, and must_equal (field -> literal) it must match.", properties: { required_fields: { type: "object", additionalProperties: { type: "string", enum: [...SPEC_TYPES] } }, must_equal: { type: "object" } } },
+        spec_origin: { type: "string", enum: [...SPEC_ORIGINS], default: "buyer_authored", description: "Who wrote the spec this verdict is graded against. Optional; absent means buyer_authored, because silence about provenance is not a claim of seller backing. An unknown value is refused rather than quietly downgraded, so a typo cannot read as a deliberate admission. seller_published is what a seller-signed offer earns: offer_hash covers the spec, so a signature refuses if the buyer rewrote it." },
       },
     },
     request: {
@@ -92,7 +93,16 @@ const deliveryRequest = {
         observed_at: { type: "string", format: "date-time" },
         mode: { type: "string", enum: [...MODES], description: "buyer_attested: the buyer presents what it received (a complaint, not proof of fault). seller_integrated: the seller signed the artifact at emit time (proves emission, not receipt; downgraded to buyer_attested when no signature is carried). verifier_observed: the verifier paid and called itself (proves delivery to the verifier, for no other buyer)." },
         http_status: { type: ["integer", "null"] },
-        seller_signature: { type: ["string", "null"], description: "The seller's emit-time signature when it provided one (examples/delivery-seller.mjs shows the shape)." },
+        seller_signature: {
+          type: ["object", "null"],
+          required: ["network", "payTo", "signature"],
+          description: "The seller's emit-time signature when it provided one, as the x-delivery-signature header carries it. Not a bare string: verifying it means binding it to the payee the buyer actually paid, so the network and payTo travel with it - a signature with nothing to bind it to proves nothing. Over the bytes 'witness.delivery-attestation.v0' + \\n + canonical({artifact_hash, offer_hash, request_hash}); see examples/delivery-seller.mjs. Declaring seller_integrated does not grant it: this is verified here and the RESULT is signed into seller_verification, so a signature that does not check out comes back as evidence_mode buyer_attested rather than failing the request.",
+          properties: {
+            network: { type: "string", description: "x402 network of the accepts[] entry that was paid. CAIP-2 (eip155:8453, solana:<genesis>) or the v1 names base, base-sepolia, solana, solana-devnet. The namespace picks the rail; the chain id changes nothing about how a signature verifies.", example: "solana" },
+            payTo: { type: "string", description: "payTo of that entry: the identity the buyer paid. On solana this IS the base58 ed25519 public key the signature is checked against; on evm it is the 20-byte address the signer is recovered and compared to (a mixed-case value is treated as a checksum claim and must be correct).", example: "9wRQHGS8qUwagaX3fYVqqdco3QkzqfajFz3ob6xN7LNi" },
+            signature: { type: "string", description: "base58-encoded 64-byte ed25519 signature on solana; 0x-hex 65-byte r||s||v EIP-191 personal-message signature on evm. High-s (malleated) evm signatures are refused rather than accepted as a second valid form of one signature.", example: "3ykr7RdF6Ksm8RzNW4c6vCM8m1kaZBN3BVeuXdnVHhyYkedY2ceRrfdcYYwr2mYXhBuvifVUbMS5Lg1T1q5bsnAw" },
+          },
+        },
         notes: { type: "array", items: { type: "string" } },
       },
     },
