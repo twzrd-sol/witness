@@ -1,6 +1,6 @@
 import express from "express";
 import { signReceipt } from "../receipt.js";
-import { hashValue, offerHash, requestHash } from "../delivery.js";
+import { SPEC_ORIGINS, hashValue, offerHash, requestHash } from "../delivery.js";
 
 // Lazily resolved so a process without the verifier fails loudly at use, not at boot.
 let _verifier = null;
@@ -113,6 +113,12 @@ function checkOffer(o) {
     }
     if (o.spec.must_equal !== undefined && !isObj(o.spec.must_equal)) p.push("offer.spec.must_equal: object of field -> literal required");
   }
+  // Declared provenance of the spec. Optional, but if declared it must be one we
+  // know, so a typo cannot silently fall back to buyer_authored and read as a
+  // deliberate admission.
+  if (o.spec_origin !== undefined && !SPEC_ORIGINS.includes(o.spec_origin)) {
+    p.push(`offer.spec_origin: one of ${SPEC_ORIGINS.join("|")}`);
+  }
   return p;
 }
 
@@ -192,8 +198,12 @@ export async function handleDeliveryAttest(body, deps = {}) {
   if (!MODES.includes(body.observation.mode)) return fail(400, "bad_mode", { problems: [`observation.mode "${body.observation.mode}" is not an evidence mode`], expected: [...MODES], example: EXAMPLE_BODY.observation.mode });
 
   // Pass the model exactly the fields it hashes, with the optional ones made explicit.
-  const { resource_url, deliverable_class, price_usdc, spec } = body.offer;
-  const offer = { resource_url, deliverable_class, price_usdc, spec };
+  // spec_origin rides through. It was dropped by an earlier four-field destructure,
+  // which made every receipt this route issued read "buyer_authored" no matter what
+  // the caller declared - silently defeating the one field that lets a consumer
+  // discount a spec the accuser wrote.
+  const { resource_url, deliverable_class, price_usdc, spec, spec_origin } = body.offer;
+  const offer = { resource_url, deliverable_class, price_usdc, spec, ...(spec_origin === undefined ? {} : { spec_origin }) };
   const request = { request_body: body.request.request_body, settlement_ref: body.request.settlement_ref ?? null, requested_at: body.request.requested_at };
   const o = body.observation;
   const observation = { artifact: o.artifact, observed_at: o.observed_at, mode: o.mode, http_status: o.http_status ?? null, seller_signature: o.seller_signature ?? null, notes: o.notes ?? [] };

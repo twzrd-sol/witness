@@ -269,7 +269,7 @@ test("a body over the limit is 413 body_too_large in the envelope", async () => 
   assert.equal(fake.calls.length, 0);
 });
 
-test("openapi documents /delivery/attest: public, enveloped, every reason distinct, limits required in the receipt", () => {
+test("openapi documents /delivery/attest: public, BARE receipt, every reason distinct, limits required", () => {
   const doc = openapiDoc({});
   const op = doc.paths["/delivery/attest"].post;
   assert.deepEqual(op.security, [], "no auth in this lane, and the doc says so");
@@ -280,13 +280,14 @@ test("openapi documents /delivery/attest: public, enveloped, every reason distin
   assert.deepEqual(req.example, EXAMPLE_BODY);
   assert.deepEqual(req.schema.required, ["offer", "request", "observation"]);
   assert.deepEqual(req.schema.properties.observation.properties.mode.enum, [...MODES]);
+  // The 200 IS the receipt, not a wrapper around one. test/delivery-contract.test.js
+  // binds this document to what the route actually serves; this test only checks the
+  // document is internally complete.
   const ok = op.responses["200"].content["application/json"].schema;
-  assert.equal(ok.properties.success.const, true);
-  for (const f of ["delivery_verdict", "evidence_mode", "declared_mode", "this_receipt_proves", "this_receipt_does_not_prove", "attested_at", "receipt"]) assert.ok(ok.properties.data.required.includes(f), `receipt schema requires ${f}`);
-  assert.deepEqual(ok.properties.data.properties.delivery_verdict.enum, [...DELIVERY_VERDICTS]);
-  assert.equal(ok.properties.request_metadata.properties.auth.type, "null");
-  assert.equal(ok.properties.request_metadata.properties.payment.type, "null");
-  const reasons = (code) => op.responses[code].content["application/json"].schema.properties.error.properties.reason.enum;
+  assert.equal(ok.properties.success, undefined, "no envelope: /witness returns its receipt bare and so does this");
+  for (const f of ["delivery_verdict", "evidence_mode", "declared_mode", "spec_origin", "this_receipt_proves", "this_receipt_does_not_prove", "attested_at", "receipt"]) assert.ok(ok.required.includes(f), `receipt schema requires ${f}`);
+  assert.deepEqual(ok.properties.delivery_verdict.enum, [...DELIVERY_VERDICTS]);
+  const reasons = (code) => op.responses[code].content["application/json"].schema.properties.reason.enum;
   assert.deepEqual(reasons("400"), ["bad_json", "bad_body", "bad_offer", "bad_paid_request", "bad_observation", "bad_mode"]);
   assert.deepEqual(reasons("413"), ["body_too_large"]);
   assert.deepEqual(reasons("500"), ["attest_failed", "attest_invalid", "internal_error"]);
