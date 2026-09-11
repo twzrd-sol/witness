@@ -144,7 +144,7 @@ export function readerPayment(env, readerFetch) {
 export function createHostApp(env = process.env, { readerFetch, probeFetch, gateTtlMs, attest, importModel } = {}) {
   const base = env.PUBLIC_BASE_URL || "https://witness.outbid.sh";
   const paywall = { evmAddress: env.EVM_ADDRESS, svmAddress: env.SVM_ADDRESS };
-  const app = createApp({ paywall, facilitatorUrl: env.FACILITATOR_URL, publicBaseUrl: base, observationsDir: env.OBSERVATIONS_DIR || "data", retrieve: makeRetrieve({ fetch: readerFetch, ...readerPayment(env, readerFetch) }), probeFetch, gateTtlMs, quoteRateLimit: env.QUOTE_RATE_LIMIT_PER_MINUTE, attestRateLimit: env.ATTEST_RATE_LIMIT_PER_MINUTE, attest, importModel });
+  const app = createApp({ paywall, facilitatorUrl: env.FACILITATOR_URL, publicBaseUrl: base, observationsDir: env.OBSERVATIONS_DIR || "data", retrieve: makeRetrieve({ fetch: readerFetch, ...readerPayment(env, readerFetch) }), probeFetch, gateTtlMs, quoteRateLimit: env.QUOTE_RATE_LIMIT_PER_MINUTE, quoteGlobalRateLimit: env.QUOTE_RATE_LIMIT_GLOBAL_PER_MINUTE, attestRateLimit: env.ATTEST_RATE_LIMIT_PER_MINUTE, attest, importModel });
   app.get("/openapi.json", (_q, res) => res.json(openapiDoc(env)));
   const text = (res, body, type = "text/plain") => res.type(type).send(body);
   app.get("/robots.txt", (_q, res) => text(res, ROBOTS));

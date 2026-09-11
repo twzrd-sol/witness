@@ -214,3 +214,153 @@ test("openapi: /delivery/attest is documented paid at the /witness price with bo
   assert.match(op.description, /ATTEST_RATE_LIMIT_PER_MINUTE/);
   assert.doesNotMatch(op.description, /free and unauthenticated/i, "the old claim is gone");
 });
+
+// ---------------------------------------------------------------------------
+// What the adversarial review found, pinned.
+
+import { FacilitatorResponseError } from "@x402/core/server";
+import { perMinuteLimiter } from "../src/server.js";
+
+/** Accepts every payment; counts what the middleware asked of it. */
+function acceptingFacilitator({ settle = "ok" } = {}) {
+  const calls = { verify: 0, settle: 0 };
+  return {
+    calls,
+    async getSupported() { return refusingFacilitator.getSupported(); },
+    async verify() { calls.verify += 1; return { isValid: true, payer: "0x00000000000000000000000000000000000000aa" }; },
+    async settle(_payload, requirements) {
+      calls.settle += 1;
+      if (settle === "throw") throw new FacilitatorResponseError("settle", 503, { error: "facilitator settle unavailable" });
+      if (settle === "fail") return { success: false, errorReason: "insufficient_funds", transaction: "", network: requirements.network, payer: "0x00000000000000000000000000000000000000aa" };
+      return { success: true, transaction: `0x${"ab".repeat(32)}`, network: requirements.network, payer: "0x00000000000000000000000000000000000000aa" };
+    },
+  };
+}
+
+/** A payment header the middleware will hand to the facilitator: the challenge's own first requirement echoed as `accepted`. */
+async function paymentFor(base) {
+  const challenge = challengeOf(await post(base, structuredClone(EXAMPLE_BODY)));
+  const accepted = challenge.accepts[0];
+  return { "payment-signature": Buffer.from(JSON.stringify({ x402Version: 2, accepted, payload: { signature: "0x00", authorization: {} } })).toString("base64") };
+}
+
+const paywalledWith = (facilitator, attest, extra = {}) =>
+  createApp({ key: generateProcessKey(), observationsDir: mkdtempSync(path.join(os.tmpdir(), "wit-attest-paid-")), funnelDir: null, facilitator, paywall: PAYWALL, publicBaseUrl: BASE_URL, attest, ...extra });
+
+test("paywall wired: the unpaid challenge fetch is free; only requests that carry a payment spend the budget", async () => {
+  const fake = countingAttest();
+  await serve(paywalledWith(refusingFacilitator, fake.attest, { attestRateLimit: 1 }), async (base) => {
+    // A standard x402 client fetches the challenge unpaid first, every time. That must not cost a slot.
+    for (let i = 0; i < 5; i++) assert.equal((await post(base, structuredClone(EXAMPLE_BODY))).status, 402, `challenge fetch #${i + 1}`);
+    // The first payment-carrying request spends the one slot (and is refused by the fixture facilitator: 402, not 429)...
+    const first = await post(base, structuredClone(EXAMPLE_BODY), { "payment-signature": "forged" });
+    assert.equal(first.status, 402);
+    // ...the second is over budget before the facilitator sees it.
+    const second = await post(base, structuredClone(EXAMPLE_BODY), { "payment-signature": "forged" });
+    assert.equal(second.status, 429);
+    assert.equal((await second.json()).reason, "attest_rate_limited");
+    // And the challenge is still free afterwards.
+    assert.equal((await post(base, structuredClone(EXAMPLE_BODY))).status, 402);
+    assert.equal(fake.calls.length, 0);
+  });
+});
+
+test("paid path end to end: a verified payment reaches the model, the receipt is signed, and settlement happens exactly once", async () => {
+  const fake = countingAttest();
+  const facilitator = acceptingFacilitator();
+  await serve(paywalledWith(facilitator, fake.attest), async (base) => {
+    const res = await post(base, structuredClone(EXAMPLE_BODY), await paymentFor(base));
+    assert.equal(res.status, 200);
+    const json = await res.json();
+    assert.equal(typeof json.receipt, "string", "a signed receipt came back");
+    assert.equal(json.delivery_verdict, "delivered");
+    assert.equal(fake.calls.length, 1, "the model ran once");
+    assert.equal(facilitator.calls.verify, 1);
+    assert.equal(facilitator.calls.settle, 1, "settled once, after the handler");
+  });
+});
+
+test("paid path: a 500 from the model never bills — the payment is verified but never settled, and the envelope is the route's", async () => {
+  const facilitator = acceptingFacilitator();
+  const boom = async () => { throw new Error("model exploded"); };
+  await serve(paywalledWith(facilitator, boom), async (base) => {
+    const res = await post(base, structuredClone(EXAMPLE_BODY), await paymentFor(base));
+    assert.equal(res.status, 500);
+    const json = await res.json();
+    assert.equal(json.reason, "attest_failed");
+    assert.equal(json.receipt, undefined);
+    assert.equal(facilitator.calls.verify, 1);
+    assert.equal(facilitator.calls.settle, 0, "nothing was settled for a response the route refused");
+  });
+});
+
+test("paid path: when settlement fails the buffered receipt is discarded — no receipt leaves the host unpaid", async () => {
+  const fake = countingAttest();
+  const facilitator = acceptingFacilitator({ settle: "fail" });
+  await serve(paywalledWith(facilitator, fake.attest), async (base) => {
+    const res = await post(base, structuredClone(EXAMPLE_BODY), await paymentFor(base));
+    assert.notEqual(res.status, 200, "a failed settlement is not a success");
+    assert.ok(res.status < 500, `settlement failure is the payment's problem, not a server error (${res.status})`);
+    const json = await res.json().catch(() => ({}));
+    assert.equal(json.receipt, undefined, "the signed receipt never left the host");
+    assert.equal(facilitator.calls.settle, 1);
+  });
+});
+
+test("the payment layer's own failures answer in the route's envelope: 502 paywall_unavailable, nothing signed or billed", async () => {
+  const fake = countingAttest();
+  const facilitator = acceptingFacilitator({ settle: "throw" });
+  await serve(paywalledWith(facilitator, fake.attest), async (base) => {
+    const res = await post(base, structuredClone(EXAMPLE_BODY), await paymentFor(base));
+    assert.equal(res.status, 502);
+    const json = await res.json();
+    assert.equal(json.reason, "paywall_unavailable");
+    assert.ok(json.details.problems.length && /settle/.test(json.details.problems[0]), JSON.stringify(json.details));
+    assert.equal(typeof json.verifier, "string");
+    assert.match(json.served_at, /^\d{4}-\d{2}-\d{2}T/);
+    assert.equal(json.receipt, undefined);
+  });
+});
+
+test("perMinuteLimiter bounds memory, not just budgets: expired windows are dropped and the map never exceeds its cap", () => {
+  let t = 0;
+  const lim = perMinuteLimiter("2", 30, { now: () => t, cap: 3, windowMs: 100 });
+  assert.equal(lim("a"), true); assert.equal(lim("a"), true); assert.equal(lim("a"), false, "third hit in the window is over budget");
+  t = 100;
+  assert.equal(lim("a"), true, "a new window after expiry");
+  assert.equal(lim.size(), 1);
+
+  // Sweep at cap: expired windows go, live ones stay.
+  t = 0; const lim2 = perMinuteLimiter("5", 30, { now: () => t, cap: 3, windowMs: 100 });
+  lim2("a"); lim2("b");
+  t = 100; lim2("c");
+  assert.equal(lim2.size(), 3);
+  lim2("d");
+  assert.equal(lim2.size(), 2, "a and b expired and were swept when the map hit the cap; c and d remain");
+
+  // Still at cap with only live windows: clear rather than grow.
+  t = 0; const lim3 = perMinuteLimiter("5", 30, { now: () => t, cap: 3, windowMs: 100 });
+  lim3("a"); lim3("b"); lim3("c");
+  assert.equal(lim3.size(), 3);
+  lim3("d");
+  assert.equal(lim3.size(), 1, "cleared, then d");
+  for (let i = 0; i < 1000; i++) lim3(`k${i}`);
+  assert.ok(lim3.size() <= 3, `never above cap (${lim3.size()})`);
+
+  // Invalid config falls back, like before.
+  const lim4 = perMinuteLimiter("nope", 2, { now: () => 0 });
+  assert.equal(lim4("x"), true); assert.equal(lim4("x"), true); assert.equal(lim4("x"), false);
+});
+
+test("POST /quote has a global budget across all clients on top of the per-client one, and attest is not charged for it", async () => {
+  const fake = countingAttest();
+  const app = createHostApp({ OBSERVATIONS_DIR: mkdtempSync(path.join(os.tmpdir(), "wit-quote-global-")), QUOTE_RATE_LIMIT_PER_MINUTE: "5", QUOTE_RATE_LIMIT_GLOBAL_PER_MINUTE: "3" }, { attest: fake.attest });
+  await serve(app, async (base) => {
+    const quote = (ip) => fetch(`${base}/quote`, { method: "POST", headers: { "content-type": "application/json", "x-forwarded-for": ip }, body: "{}" });
+    for (const ip of ["203.0.113.1", "203.0.113.2", "203.0.113.3"]) assert.equal((await quote(ip)).status, 400, `${ip}: shape error, global slot consumed`);
+    const fourth = await quote("203.0.113.4");
+    assert.equal(fourth.status, 429, "a fresh client is refused once the global budget is spent");
+    assert.equal((await fourth.json()).reason, "quote_rate_limited");
+    assert.equal((await post(base, structuredClone(EXAMPLE_BODY), { "x-forwarded-for": "203.0.113.4" })).status, 200, "attest has its own budget");
+  });
+});
