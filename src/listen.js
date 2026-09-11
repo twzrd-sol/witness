@@ -37,6 +37,7 @@ const LLMS = `# witness
 
 - POST /quote — free deliverability probe. 200 = the observation can be performed now, and the body announces the verdict you will be issued; 422 = not. Nothing is billed either way.
 - POST /witness — same body + x402 payment. Signed receipt: value, assertion, verdict, observed_at, source_hash, evidence, agreement, method, spec_hash, valid_until, vantage.
+- POST /delivery/attest — after a paid call to any x402 seller, submit {offer, request, observation} and get a signed delivery receipt (delivered | contradicted | incomplete | unable_to_verify) bound to offer_hash, request_hash, artifact_hash. $0.01 USDC over x402; shape and limits at GET /openapi.json.
 
 Verdicts. A 200 quote carries the verdict the receipt will be signed with, so you always know the answer before paying, and the price is the same for all of them:
 - supported — every field was found and the claim holds.
@@ -46,7 +47,7 @@ A claim we cannot read is never priced: a malformed assertion, or one naming a f
 - GET /pubkey — ed25519 key (receipts are signed over deep canonical JSON, 1h validity).
 - GET /observatory — verified receipts; contradictions and expiry are visible.
 - GET /.well-known/x402 — payment descriptor for POST /witness.
-- GET /openapi.json — OpenAPI 3.1 for POST /quote and POST /witness.
+- GET /openapi.json — OpenAPI 3.1 for POST /quote, POST /witness, and POST /delivery/attest.
 
 Quote first. A 200 quote is worth paying whatever verdict it announces — contradicted and incomplete are answers you asked for.
 - Change Proof: hold a prior receipt? POST /quote again with prior_receipt = that 200 body; the quote answers changed (true/false), previous_source_hash, and source_hash before you pay. Pay POST /witness with the same body for a signed delta receipt.
@@ -143,7 +144,7 @@ export function readerPayment(env, readerFetch) {
 export function createHostApp(env = process.env, { readerFetch, probeFetch, gateTtlMs, attest, importModel } = {}) {
   const base = env.PUBLIC_BASE_URL || "https://witness.outbid.sh";
   const paywall = { evmAddress: env.EVM_ADDRESS, svmAddress: env.SVM_ADDRESS };
-  const app = createApp({ paywall, facilitatorUrl: env.FACILITATOR_URL, publicBaseUrl: base, observationsDir: env.OBSERVATIONS_DIR || "data", retrieve: makeRetrieve({ fetch: readerFetch, ...readerPayment(env, readerFetch) }), probeFetch, gateTtlMs, quoteRateLimit: env.QUOTE_RATE_LIMIT_PER_MINUTE, attest, importModel });
+  const app = createApp({ paywall, facilitatorUrl: env.FACILITATOR_URL, publicBaseUrl: base, observationsDir: env.OBSERVATIONS_DIR || "data", retrieve: makeRetrieve({ fetch: readerFetch, ...readerPayment(env, readerFetch) }), probeFetch, gateTtlMs, quoteRateLimit: env.QUOTE_RATE_LIMIT_PER_MINUTE, attestRateLimit: env.ATTEST_RATE_LIMIT_PER_MINUTE, attest, importModel });
   app.get("/openapi.json", (_q, res) => res.json(openapiDoc(env)));
   const text = (res, body, type = "text/plain") => res.type(type).send(body);
   app.get("/robots.txt", (_q, res) => text(res, ROBOTS));

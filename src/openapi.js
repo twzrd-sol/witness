@@ -143,20 +143,6 @@ const deliveryReceiptSchema = {
   },
 };
 
-const deliveryMetadata = {
-  type: "object",
-  required: ["route", "served_at", "verifier", "pubkey_path", "auth", "payment"],
-  properties: {
-    route: { const: "/delivery/attest" },
-    served_at: { type: "string", format: "date-time" },
-    verifier: { type: "string" },
-    pubkey_path: { const: "/pubkey" },
-    signature: { type: "string", description: "How to verify data.receipt." },
-    auth: { type: "null", description: "No authentication on this route yet; this is where a buyer identity would be recorded." },
-    payment: { type: "null", description: "No payment on this route yet; this is where the rail and settlement would be recorded." },
-  },
-};
-
 // The route returns the signed receipt BARE, as /witness returns its own. An
 // earlier draft wrapped it in {success, data, request_metadata}; this document
 // kept describing that wrapper after the route dropped it, and neither test
@@ -174,6 +160,30 @@ const deliveryFailure = (reasons) => ({
     verifier: { type: "string", description: "The host that refused; its /pubkey signs receipts it does issue." },
     served_at: { type: "string", format: "date-time" },
   },
+});
+
+/** The x402 challenge every paid route answers unpaid; `resourceUrl` is the canonical resource the challenge names. */
+const paymentRequired = (resourceUrl) => ({
+  description: "x402 payment required. The challenge is base64-JSON in the PAYMENT-REQUIRED response header ({x402Version:2, resource{url,...}, accepts[], extensions}); SDK clients (@x402/fetch et al) read that header — do not parse the body, which may be {}.",
+  headers: { "payment-required": { required: true, description: "Base64-encoded x402 v2 payment challenge.", schema: { type: "string" } } },
+  content: { "application/json": { schema: {
+    type: "object",
+    properties: {
+      x402Version: { type: "integer", const: 2 },
+      error: { type: "string" },
+      resource: { type: "object", properties: { url: { const: resourceUrl }, description: { type: "string" }, mimeType: { type: "string" }, serviceName: { type: "string" }, tags: { type: "array", items: { type: "string" } } } },
+      accepts: { type: "array", items: { type: "object", required: ["scheme", "network", "amount", "asset", "payTo"], properties: {
+        scheme: { const: "exact" },
+        network: { enum: ["eip155:8453", "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"] },
+        amount: { type: "string", description: 'Atomic units — "10000" = 0.01 USDC (6 decimals). Not "price".' },
+        asset: { type: "string", description: "USDC contract (Base) / mint (Solana) for the network." },
+        payTo: { type: "string" },
+        maxTimeoutSeconds: { type: "integer" },
+        extra: { type: "object", description: "Scheme metadata: name, version; feePayer on Solana." },
+      } } },
+      extensions: { type: "object", description: "Declared extensions (bazaar discovery) when applicable." },
+    },
+  } } },
 });
 
 export function openapiDoc(env = process.env) {
@@ -289,28 +299,7 @@ export function openapiDoc(env = process.env) {
           requestBody: body(quoteRequest, EXAMPLE),
           responses: {
             "200": out("Signed receipt", receiptSchema),
-            "402": {
-              description: "x402 payment required. The challenge is base64-JSON in the PAYMENT-REQUIRED response header ({x402Version:2, resource{url,...}, accepts[], extensions}); SDK clients (@x402/fetch et al) read that header — do not parse the body, which may be {}.",
-              headers: { "payment-required": { required: true, description: "Base64-encoded x402 v2 payment challenge.", schema: { type: "string" } } },
-              content: { "application/json": { schema: {
-                type: "object",
-                properties: {
-                  x402Version: { type: "integer", const: 2 },
-                  error: { type: "string" },
-                  resource: { type: "object", properties: { url: { const: `${base}/witness` }, description: { type: "string" }, mimeType: { type: "string" }, serviceName: { type: "string" }, tags: { type: "array", items: { type: "string" } } } },
-                  accepts: { type: "array", items: { type: "object", required: ["scheme", "network", "amount", "asset", "payTo"], properties: {
-                    scheme: { const: "exact" },
-                    network: { enum: ["eip155:8453", "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"] },
-                    amount: { type: "string", description: 'Atomic units — "10000" = 0.01 USDC (6 decimals). Not "price".' },
-                    asset: { type: "string", description: "USDC contract (Base) / mint (Solana) for the network." },
-                    payTo: { type: "string" },
-                    maxTimeoutSeconds: { type: "integer" },
-                    extra: { type: "object", description: "Scheme metadata: name, version; feePayer on Solana." },
-                  } } },
-                  extensions: { type: "object", description: "Declared extensions (bazaar discovery) when applicable." },
-                },
-              } } },
-            },
+            "402": paymentRequired(`${base}/witness`),
             "400": badRequest,
             "422": out("Could not be checked — nothing billed. A claim that simply does not hold is a 200 with verdict contradicted, not a 422."),
           },
@@ -319,15 +308,19 @@ export function openapiDoc(env = process.env) {
       "/delivery/attest": {
         post: {
           summary: "Delivery attestation — signed receipt for one paid call",
-          tags: ["receipt"],
-          description: `Settlement proves money moved; it proves nothing about what came back. This route grades one specific paid call — {offer, request, observation} — and signs a delivery receipt bound to offer_hash, request_hash, artifact_hash, the evidence mode, this verifier, and time. A page check is not a delivery receipt; the binding is the product. Free and unauthenticated in this revision (request_metadata.auth and .payment are null and mark where each would go). Every receipt carries its own limits (this_receipt_proves / this_receipt_does_not_prove) inside the signature; nothing here strips or summarises them. A request that cannot be graded — nothing came back, artifact observed outside the freshness window, unparseable timestamps — is a 200 with delivery_verdict unable_to_verify, not an error: inability to verify is a result. Only requests this route cannot read are refused, as 400 in the same envelope with a distinct reason. Verify data.receipt offline: drop the receipt field, deep-canonical JSON (sorted keys, no whitespace), ed25519 against GET /pubkey. Body limit ${DELIVERY_MAX_BODY}. Reference integrations: examples/delivery-seller.mjs (sign at emit time) and examples/delivery-buyer.mjs (obtain and verify).`,
-          security: [],
+          tags: ["receipt", "x402"],
+          description: `Settlement proves money moved; it proves nothing about what came back. This route grades one specific paid call — {offer, request, observation} — and signs a delivery receipt bound to offer_hash, request_hash, artifact_hash, the evidence mode, this verifier, and time. A page check is not a delivery receipt; the binding is the product. Paid over x402 at the /witness price ($0.01 USDC, Base or Solana) when the host has a paywall, and the reference deployment does: a well-formed unpaid request gets the 402 challenge in the PAYMENT-REQUIRED header, and a request this route cannot read is refused 400 before it sees a 402 or spends a rate-limit slot. Requests are per-IP rate limited after the shape check (429 attest_rate_limited; ATTEST_RATE_LIMIT_PER_MINUTE, default 30). No buyer identity is checked or recorded, and the fee is not written into the receipt: the receipt binds the call it grades. Every receipt carries its own limits (this_receipt_proves / this_receipt_does_not_prove) inside the signature; nothing here strips or summarises them. A request that cannot be graded — nothing came back, artifact observed outside the freshness window, unparseable timestamps — is a 200 with delivery_verdict unable_to_verify, not an error: inability to verify is a result. Only requests this route cannot read are refused, as 400 in the same envelope with a distinct reason. Verify the receipt offline: drop the receipt field, deep-canonical JSON (sorted keys, no whitespace), ed25519 against GET /pubkey. Body limit ${DELIVERY_MAX_BODY}. Reference integrations: examples/delivery-seller.mjs (sign at emit time) and examples/delivery-buyer.mjs (obtain and verify against an in-process host).`,
+          "x-payment": { protocol: "x402", x402Version: 2, price_usdc: "0.01", accepts: witnessAccepts({ evmAddress: env.EVM_ADDRESS, svmAddress: env.SVM_ADDRESS }) },
+          "x-payment-info": { protocols: [{ x402: {} }], price: { mode: "fixed", currency: "USD", amount: "0.010000" }, descriptor: "GET /.well-known/x402" },
+          security: [{ x402: [] }],
           requestBody: body(deliveryRequest, DELIVERY_EXAMPLE),
           responses: {
             "200": out("The signed delivery receipt, bare, exactly as /witness returns its own. Any verdict, including unable_to_verify, is a 200: inability to verify is a result, not a failure.", deliveryOk(deliveryReceiptSchema)),
-            "400": out('Request could not be read — nothing graded or signed. reason: "bad_json" (unparseable, bare primitive, or not application/json); "bad_body" (JSON but not an object); "bad_offer", "bad_paid_request", "bad_observation" (that member is missing or off-shape; details.problems names each field, expected and example show the shape); "bad_mode" (observation.mode outside the three evidence modes). observation.artifact must be present — null means nothing came back and is graded, not refused.', deliveryFailure(["bad_json", "bad_body", "bad_offer", "bad_paid_request", "bad_observation", "bad_mode"])),
+            "400": out('Request could not be read — nothing graded, signed, or billed; a 400 never sees a 402. reason: "bad_json" (unparseable, bare primitive, or not application/json); "bad_body" (JSON but not an object); "bad_offer", "bad_paid_request", "bad_observation" (that member is missing or off-shape; details.problems names each field, expected and example show the shape); "bad_mode" (observation.mode outside the three evidence modes). observation.artifact must be present — null means nothing came back and is graded, not refused.', deliveryFailure(["bad_json", "bad_body", "bad_offer", "bad_paid_request", "bad_observation", "bad_mode"])),
+            "402": paymentRequired(`${base}/delivery/attest`),
             "413": out(`Body over ${DELIVERY_MAX_BODY} — reason body_too_large.`, deliveryFailure(["body_too_large"])),
-            "500": out('Our defect, never a verdict: "attest_failed" (the model threw), "attest_invalid" (the model returned a receipt without a verdict or its limits, which this route refuses to sign rather than patch), "internal_error".', deliveryFailure(["attest_failed", "attest_invalid", "internal_error"])),
+            "429": out("Per-IP attestation budget exceeded — reason attest_rate_limited. Nothing graded, signed, or billed. The limiter runs after the shape check, so a 400 never consumes a slot; it is separate from the POST /quote limiter.", deliveryFailure(["attest_rate_limited"])),
+            "500": out('Our defect, never a verdict and never billed: "attest_failed" (the model threw), "attest_invalid" (the model returned a receipt without a verdict or its limits, which this route refuses to sign rather than patch), "internal_error".', deliveryFailure(["attest_failed", "attest_invalid", "internal_error"])),
             "503": out("No evidence model in this process — reason attest_not_wired.", deliveryFailure(["attest_not_wired"])),
           },
         },
