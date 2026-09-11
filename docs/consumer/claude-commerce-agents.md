@@ -30,59 +30,58 @@ that handoff.
 
 ## Mapping to this branch
 
-| Blueprint | Witness (this branch) |
+| Blueprint | Witness |
 | --- | --- |
-| Catalog / `search_products`, `get_product_detail` | `GET /api/offers/:id` returns the offer record; `OFFERS` is the catalog (one entry today). |
-| Cart + `prepare_checkout(cart)` returning a URL | `POST /api/quotes {offer_id, quantity}` returns `cart` (items, subtotal, currency) and `checkout_url` at the merchant. |
-| Checkout card rendered by the host | `GET /offers/:id` HTML: outcome, price, license, **Buy now** (merchant cart URL). |
-| Skill / task the agent executes | `GET /api/offers/:id/task.json`: intent, requirements, merchant links, price. |
-| `checkout` delegated, payment stays at merchant | `checkout: "merchant_hosted"` on the offer and the quote. Payment completes on the merchant's Shopify checkout. |
-| Grounding: facts come from the backend, not the model | Price and variant come from the offer record, never from request JSON. |
+| Catalog / `search_products`, `get_product_detail` | `GET /api/offers/:id` returns the offer record; `OFFERS` is the catalog. Two rails: `merchant_checkout` (Pixel Surplus, card at the merchant) and `x402` (outbid Reader, USDC 0.005 per call, agent pays). |
+| Cart + `prepare_checkout(cart)` returning what the host needs to pay | `POST /api/quotes`. Merchant rail: `{offer_id, quantity}` returns `cart` and `checkout_url`. x402 rail: `{offer_id, input:{url}}` returns the resolved `request` and the live `accepts[]` to settle against. |
+| Checkout card rendered by the host | `GET /offers/:id` HTML: outcome, rail, price, license, **Buy now** (merchant rail). |
+| Skill / task the agent executes | `GET /api/offers/:id/task.json`: intent, requirements, merchant or resource, price. Both tasks route the agent through the gated quote first. |
+| Payment stays outside the agent | `checkout: "merchant_hosted"` or `checkout: "x402"`. Witness never pays, reserves, or creates order state on either rail. |
+| Grounding: facts come from the backend, not the model | Price, variant, payee, and checkout origin come from the offer record, never from request JSON. |
 
-The earlier framing on this branch stamped every quote response with
-`handoff_required`, `payment_authorized:false`, and
-`enforcement_scope:eligibility_only`, treating merchant checkout as a
-limitation to be disclaimed. The blueprint treats it as the design, and this
-branch now does the same: the quote is a cart plus a merchant checkout URL.
-What stays are the factual labels: the price is `observed_item_price` (tax and
-fees set the total at checkout), the task template carries
-`authorization:null` (the recipient supplies authority and budget), and the
-page says there is no merchant partnership. Those are true statements about
-the surface, not stub markers.
+The stamps the first cut carried (`handoff_required`, `payment_authorized:false`,
+`enforcement_scope`) are gone. What stays are the factual labels: the merchant
+price is `observed_item_price` (tax and fees set the total at checkout), the
+task template carries `authorization:null` (the recipient supplies authority
+and budget), and the page says there is no merchant partnership.
 
 ## What Witness adds that the blueprint leaves open
 
 The blueprint's provenance gates check *which tool* produced a value. They do
-not check whether the merchant's page actually says what the agent claims it
-says at the moment of purchase. That is Witness's job:
+not check whether the counterparty still says, at the moment of purchase, what
+the catalog claims. Witness does, inside `prepare_checkout`:
 
-- **Pre-checkout observation.** `POST /witness` (x402-paid) fetches the
-  merchant page, extracts the price, and returns a signed receipt with
-  `verdict: supported | contradicted | incomplete | stale | unable_to_verify`.
-  The shopping-preapproval harness (`scripts/shopping-preapproval.mjs`)
-  turns that verdict into an approve/block decision (`decideGate`) before a
-  simulated checkout.
-- **Where it plugs in.** Between "cart built" and "checkout URL rendered": a
-  `StorefrontBackend.prepare_checkout` implementation can call Witness with
-  the offer's `product_url` and the expected `price_minor`, and refuse to
-  return the checkout URL on `contradicted` or `stale`. That is a
-  provenance gate on the *merchant's live page*, not on the agent's own
-  tool outputs.
-- **Portable evidence.** The receipt is verifiable offline
-  (`verifyReceipt` in `src/receipt.js`), so the buyer, the merchant, or a
-  card network can check after the fact what the page said when the agent
-  decided to buy.
+- **Merchant rail: the price is re-observed before the URL is handed over.**
+  Each merchant offer carries a Witness method (`verified_by` on the catalog
+  record): the merchant's public product record, the fields to extract, and
+  the assertion `price == <catalog cents>`. `POST /api/quotes` runs it through
+  the free quote path (no signing, no billing, no observation written). Only
+  a `supported` verdict returns `checkout_url`. `contradicted`, `incomplete`,
+  `unable_to_verify`, and any retrieve failure withhold it with a 409 whose
+  `gate.observed` shows what the merchant actually says. Fail-closed, the
+  same rule as `decideGate` in `scripts/shopping-preapproval.mjs`.
+- **x402 rail: the payee is re-checked before the agent is told where to pay.**
+  The catalog vouches for specific `accepts[]` (network, payee, amount, asset).
+  The quote probes the live resource unpaid, expects a 402, and returns only
+  the live entries that match the catalog. A changed payee or amount withholds
+  with a 409 that shows the live challenge. This is the implementation
+  contract's "changed payee cannot retain prior approval", on the agent rail.
+- **Cost and abuse bounds.** A gate run costs the operator one reader call, so
+  results are cached per offer for five minutes and a cache miss shares the
+  `POST /quote` per-IP limiter (429).
+- **Portable evidence remains the paid product.** The gate uses the free quote;
+  an agent that wants a signed, offline-verifiable receipt of the observation
+  pays `POST /witness` with the same method (`verifyReceipt` in `src/receipt.js`).
 
 ## What would make Witness a blueprint backend
 
 1. A `StorefrontBackend` adapter (Python, in the blueprint's package layout)
    whose `search_products` reads `GET /api/offers/:id` (or a list endpoint,
-   once there is more than one offer), and whose `prepare_checkout` posts to
-   `POST /api/quotes` and returns `checkout_url`.
-2. A Witness call inside `prepare_checkout`, gated by the preapproval
-   verdict, with the receipt attached to the checkout card the host renders.
-3. Evals authored with `/author-commerce-evals` covering the
-   contradicted-price path, so the gate is exercised, not assumed.
+   once there is more than one offer per rail), and whose `prepare_checkout`
+   posts to `POST /api/quotes` and returns `checkout_url` or the x402
+   `accepts[]`, treating a 409 as "do not present checkout".
+2. Evals authored with `/author-commerce-evals` covering the contradicted
+   price and changed-payee paths, so the gate is exercised, not assumed.
 
 ## Sources
 

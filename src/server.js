@@ -307,8 +307,9 @@ export function createApp(deps = {}) {
   });
   app.use(express.json({ limit: "64kb" }));
   const reply = (res, out) => res.status(out.status).json(out.json);
-  // Consumer offers: catalog, cart, and merchant-hosted checkout URL.
-  app.use(createOffersRouter());
+  // Consumer offers: catalog, cart, and a gated checkout handoff. The gate
+  // reuses handleQuote (free path) and the /quote per-IP limiter.
+  app.use(createOffersRouter({ ...wired, handleQuote, quoteAllowed, probeFetch: deps.probeFetch, gateTtlMs: deps.gateTtlMs }));
   // Express 4 drops a rejected async handler on the floor: the request hangs and the
   // process dies on the unhandled rejection. Route every rejection to the 500 handler.
   const guard = (fn) => (req, res, next) => fn(req, res, next).catch(next);
