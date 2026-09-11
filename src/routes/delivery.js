@@ -57,16 +57,22 @@ const loadVerifier = async () => (_verifier ??= (await import("../delivery-signa
  *   500 attest_invalid    the model returned something that is not a receipt (no verdict, no limits, pre-signed)
  *   500 internal_error    anything else on our side
  *   503 attest_not_wired  no model in this process (deps.attest absent and ../delivery.js not importable)
- *   429 attest_rate_limited  this client is over its per-IP budget (deps.attestAllowed); nothing graded or signed
+ *   429 attest_rate_limited  this client is over its per-IP budget (deps.attestAllowed); nothing graded or signed.
+ *                            With a paywall only requests that carry a payment count; the unpaid challenge
+ *                            fetch every x402 client makes first is free, like a 400. Without a paywall
+ *                            every shape-valid request reaches the key, so every one counts.
  *   402 (x402 challenge)     the host has a paywall (deps.paywall) and the request carried no valid payment;
  *                            the challenge is in the PAYMENT-REQUIRED header, the body may be {}
+ *   502 paywall_unavailable  the payment layer (facilitator) could not be reached or answered badly;
+ *                            nothing graded, signed, or billed. The paywall's own {error} bodies are
+ *                            rewritten into this envelope so every non-200 here has one shape.
  *
  * Order is the contract: parse -> shape -> limiter -> paywall -> model. A request we
  * cannot read is answered 400 before it costs a limiter slot or sees a 402, the
- * limiter bounds how often one client can reach the key at all, and the paywall
- * (when the host has one; ../server.js wires it at the /witness price) stands
- * between a well-formed request and a signature. Without deps.paywall the route
- * serves unpaid (tests, embedders, the in-process examples) but stays limited.
+ * limiter bounds how often one client can bring a payment to the key, and the
+ * paywall (when the host has one; ../server.js wires it at the /witness price)
+ * stands between a well-formed request and a signature. Without deps.paywall the
+ * route serves unpaid (tests, embedders, the in-process examples) but stays limited.
  *
  * NOT HERE, ON PURPOSE: authentication. A buyer identity (payer address or bearer)
  * would be checked in the handler before attest() and never written into the
@@ -296,16 +302,37 @@ export function createDeliveryRouter(deps = {}) {
     return refused ? reply(res, refused) : next();
   };
   // Per-IP budget on requests that have already passed the shape check, so a 400 is
-  // free to debug against and a 429 means "you reached the key too often", nothing else.
+  // free to debug against and a 429 means "you brought payments to the key too often",
+  // nothing else. With a paywall in front of the key only a request that carries a
+  // payment counts: the unpaid challenge fetch every x402 client makes first costs
+  // nothing (no facilitator call, nothing signed), and counting it would halve the
+  // documented budget and let an unpaid neighbour on a shared egress lock payers out.
+  const carriesPayment = (req) => Boolean(req.headers["payment-signature"] || req.headers["x-payment"]);
   const limiter = (req, res, next) => {
-    if (typeof deps.attestAllowed === "function" && !deps.attestAllowed(req.ip)) {
+    if (typeof deps.attestAllowed !== "function") return next();
+    if (typeof deps.paywall === "function" && !carriesPayment(req)) return next();
+    if (!deps.attestAllowed(req.ip)) {
       return reply(res, failure(requestMetadata(deps))(429, "attest_rate_limited", { problems: ["too many attestation requests from this client; retry after a minute"] }));
     }
     next();
   };
   // The paywall is the host's (../server.js builds it at the /witness price); it only
-  // ever sees a request the shape check accepted, so a 400 never sees a 402.
-  const paywall = typeof deps.paywall === "function" ? [deps.paywall] : [];
+  // ever sees a request the shape check accepted, so a 400 never sees a 402. Its own
+  // failures arrive as bare {error} bodies (facilitator unreachable: 502; its internal
+  // errors: 500); they are rewritten into this route's envelope so a consumer reads one
+  // shape for every non-200. Nothing has been graded or signed on either.
+  const paywall = typeof deps.paywall === "function" ? [(req, res, next) => {
+    const json = res.json.bind(res);
+    res.json = (body) => {
+      if (res.statusCode >= 500 && isObj(body) && typeof body.error === "string" && !("reason" in body)) {
+        const fail = failure(requestMetadata(deps));
+        const out = res.statusCode === 502 ? fail(502, "paywall_unavailable", { problems: [body.error] }) : fail(500, "internal_error", { problems: [body.error] });
+        return json(out.json);
+      }
+      return json(body);
+    };
+    return deps.paywall(req, res, next);
+  }] : [];
   router.post(ROUTE, contentType, express.json({ limit: deps.maxBody ?? MAX_BODY }), shape, limiter, ...paywall, (req, res, next) => {
     handleDeliveryAttest(req.body, handlerDeps).then((out) => reply(res, out)).catch(next);
   });

@@ -59,19 +59,36 @@ export function witnessAccepts({ evmAddress, svmAddress } = {}) {
   return a;
 }
 
-/** Fixed-window per-IP limiter: `limit` hits per 60s; default 30 when unset or invalid. */
-function perMinuteLimiter(configured, fallback = 30) {
+/**
+ * Fixed-window per-key limiter: `limit` hits per window, default 30 when unset or
+ * invalid. Memory is bounded, not just budgets: an expired window is dropped on the
+ * next access from its key; when the map reaches `cap` every expired window is
+ * swept; and if it is still at cap the map is cleared (budgets reset, nothing
+ * else). Keys are real client addresses behind the tunnel, so a caller minting a
+ * fresh address per request (an IPv6 block is enough) can hold at most `cap`
+ * windows in memory, never a window per address for the life of the process.
+ */
+export function perMinuteLimiter(configured, fallback = 30, { now = Date.now, cap = 10_000, windowMs = 60_000 } = {}) {
   const n = Number(configured ?? fallback);
   const limit = Number.isInteger(n) && n > 0 ? n : fallback;
   const hits = new Map();
-  return (ip) => {
-    const now = Date.now();
-    const prior = hits.get(ip);
-    const h = prior && now - prior.startedAt < 60_000 ? prior : { startedAt: now, count: 0 };
+  const sweep = (t) => {
+    for (const [k, v] of hits) if (t - v.startedAt >= windowMs) hits.delete(k);
+    if (hits.size >= cap) hits.clear();
+  };
+  const allowed = (key) => {
+    const t = now();
+    const prior = hits.get(key);
+    const live = prior && t - prior.startedAt < windowMs ? prior : null;
+    if (prior && !live) hits.delete(key);
+    if (!live && hits.size >= cap) sweep(t);
+    const h = live ?? { startedAt: t, count: 0 };
     h.count += 1;
-    hits.set(ip, h);
+    hits.set(key, h);
     return h.count <= limit;
   };
+  allowed.size = () => hits.size;
+  return allowed;
 }
 
 function processKey(deps) {
@@ -285,15 +302,28 @@ export function createApp(deps = {}) {
   const resourceUrl = `${publicBase}/witness`;
   const app = express();
   // The host binds loopback and only the tunnel reaches it, so every socket is
-  // 127.0.0.1. Trusting loopback makes req.ip the forwarded client address, and
-  // the per-IP budgets (quote, offers gate, attest) per client instead of one
-  // bucket shared by everyone behind the tunnel. Without a forwarded header
-  // (tests, direct loopback callers) req.ip stays the socket address.
+  // 127.0.0.1. Trusting loopback makes req.ip the forwarded client address (the
+  // rightmost, tunnel-appended entry, so a client-supplied chain cannot pick its
+  // own bucket), and the per-IP budgets (quote, offers gate, attest) per client
+  // instead of one bucket shared by everyone behind the tunnel. Without a forwarded
+  // header (tests, direct loopback callers) req.ip stays the socket address; a
+  // process on this box could forge one, which is the same trust loopback already
+  // carries for the socket itself.
   app.set("trust proxy", "loopback");
   const funnelDir = deps.funnelDir === undefined ? wired.observationsDir : deps.funnelDir;
-  const quoteAllowed = perMinuteLimiter(deps.quoteRateLimit ?? process.env.QUOTE_RATE_LIMIT_PER_MINUTE);
+  // Every /quote (and every offers-gate miss) can cost the operator a paid reader
+  // call. Budgets are per client, and since trust proxy made clients distinguishable
+  // the aggregate would otherwise be unbounded: before it, the single loopback bucket
+  // was an accidental global cap of 30/min. The busiest minute in ten days of funnel
+  // logs was 32, so a 60/min ceiling across all clients bounds spend without one
+  // client starving the rest. Both are env-tunable.
+  const quotePerClient = perMinuteLimiter(deps.quoteRateLimit ?? process.env.QUOTE_RATE_LIMIT_PER_MINUTE);
+  const quoteGlobal = perMinuteLimiter(deps.quoteGlobalRateLimit ?? process.env.QUOTE_RATE_LIMIT_GLOBAL_PER_MINUTE, 60);
+  const quoteAllowed = (ip) => quotePerClient(ip) && quoteGlobal("*");
   // Attestation has its own budget: a signing is not a probe, and one limiter shared
   // across both would let a burst of free quotes starve attestations, or the reverse.
+  // It counts payment-carrying requests only when a paywall is in front (see the
+  // delivery router), and signing costs the operator nothing, so no global cap here.
   const attestAllowed = perMinuteLimiter(deps.attestRateLimit ?? process.env.ATTEST_RATE_LIMIT_PER_MINUTE);
   const accepts = witnessAccepts(deps.paywall);
   // One resource server for every paid route, built before the delivery router is

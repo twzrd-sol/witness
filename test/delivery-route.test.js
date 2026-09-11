@@ -275,7 +275,7 @@ test("openapi documents /delivery/attest: public, BARE receipt, every reason dis
   const doc = openapiDoc({});
   const op = doc.paths["/delivery/attest"].post;
   assert.deepEqual(op.security, [{ x402: [] }], "paid over x402 when the host has a paywall, and the doc says so");
-  assert.deepEqual(Object.keys(op.responses).sort(), ["200", "400", "402", "413", "429", "500", "503"]);
+  assert.deepEqual(Object.keys(op.responses).sort(), ["200", "400", "402", "413", "429", "500", "502", "503"]);
   assert.equal(op["x-payment"].price_usdc, "0.01", "the /witness price, not a second tariff");
   assert.match(op.description, /unable_to_verify, not an error/);
   assert.match(op.description, /this_receipt_proves/);
@@ -295,8 +295,9 @@ test("openapi documents /delivery/attest: public, BARE receipt, every reason dis
   assert.deepEqual(reasons("413"), ["body_too_large"]);
   assert.deepEqual(reasons("429"), ["attest_rate_limited"]);
   assert.deepEqual(reasons("500"), ["attest_failed", "attest_invalid", "internal_error"]);
+  assert.deepEqual(reasons("502"), ["paywall_unavailable"]);
   assert.deepEqual(reasons("503"), ["attest_not_wired"]);
-  const all = ["400", "413", "429", "500", "503"].flatMap(reasons);
+  const all = ["400", "413", "429", "500", "502", "503"].flatMap(reasons);
   assert.equal(new Set(all).size, all.length, "reasons are distinct across statuses");
 });
 
