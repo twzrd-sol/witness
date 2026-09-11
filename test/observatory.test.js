@@ -7,16 +7,12 @@ import { generateProcessKey, signReceipt, verifyReceipt } from "../src/receipt.j
 import {
   appendObservation,
   compareReceipts,
-  compareResults,
-  createResult,
   methodFromRequest,
   readObservations,
-  seedResults,
-  SEED_SPECS,
   specHash,
   VALID_FOR_MS,
-  verifyResult,
 } from "../src/observatory.js";
+import { compareResults, createResult, seedResults, SEED_SPECS, verifyResult } from "./observatory-fixtures.js";
 import { renderStarMap } from "../src/star-map.js";
 
 test("method identity is canonical and results are attributable", () => {

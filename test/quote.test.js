@@ -28,10 +28,38 @@ test("quote 200 when fixture html fills extract", async () => {
   assert.deepEqual(out.json, { price_usdc: "0.01", replicas: 1, can_deliver: true });
 });
 
-test("quote 422s assertion failures before payment", async () => {
+test("an assertion that does not hold is quoted as contradicted, not refused", async () => {
+  // The contract change: "the page does not say what you were told" is the answer
+  // the caller came for, so it is priced and announced before payment rather than
+  // returned as a bare 422 with no receipt.
   const out = await handleQuote({ ...BODY, assertion: "starter_price < 10" }, { retrieve: async () => ({ text: FIXTURE }) });
+  assert.equal(out.status, 200);
+  assert.equal(out.json.verdict, "contradicted");
+  assert.equal(out.json.can_deliver, true);
+  assert.equal(out.json.price_usdc, "0.01", "same price as any other verdict");
+});
+
+test("an unreadable claim is never priced -- unable_to_verify stays a free refusal", async () => {
+  const out = await handleQuote({ ...BODY, assertion: "starter_price ~~ cheap" }, { retrieve: async () => ({ text: FIXTURE }) });
   assert.equal(out.status, 422);
-  assert.equal(out.json.reason, "assertion_failed");
+  assert.equal(out.json.reason, "assertion_malformed");
+  assert.equal(out.json.price_usdc, undefined, "nothing is quoted for a claim we cannot read");
+});
+
+test("a claim whose field the source lacks is quoted as incomplete, and says which", async () => {
+  // starter_price resolves, so the extractor demonstrably read this page and the
+  // absent field is the source's gap -- the only shape in which incomplete bills.
+  const out = await handleQuote({ url: BODY.url, extract: { nowhere: "number", starter_price: "number" }, assertion: "nowhere < 10" },
+    { retrieve: async () => ({ text: FIXTURE }) });
+  assert.equal(out.status, 200);
+  assert.equal(out.json.verdict, "incomplete");
+  assert.deepEqual(out.json.missing, ["nowhere"]);
+});
+
+test("with no claim at all, a bare extract miss is still the free refusal", async () => {
+  const out = await handleQuote({ url: BODY.url, extract: { nowhere: "number" } }, { retrieve: async () => ({ text: FIXTURE }) });
+  assert.equal(out.status, 422);
+  assert.equal(out.json.reason, "extract_missing");
 });
 
 test("scrape 422 does not call browse", async () => {
@@ -46,7 +74,7 @@ test("scrape 422 does not call browse", async () => {
 
 test("POST /quote SSRF does not retrieve", async () => {
   let n = 0;
-  const app = createApp({ key: generateProcessKey(), retrieve: async () => (n++, { text: FIXTURE }) });
+  const app = createApp({ key: generateProcessKey(), retrieve: async () => (n++, { text: FIXTURE }), funnelDir: null });
   const server = app.listen(0, "127.0.0.1");
   await new Promise((r) => server.once("listening", r));
   const res = await fetch(`http://127.0.0.1:${server.address().port}/quote`, {
@@ -57,5 +85,17 @@ test("POST /quote SSRF does not retrieve", async () => {
   assert.equal(res.status, 422);
   assert.equal((await res.json()).reason, "https_only");
   assert.equal(n, 0);
+  await new Promise((r) => server.close(r));
+});
+
+test("POST /quote rate limits anonymous reader probes", async () => {
+  const app = createApp({ key: generateProcessKey(), quoteRateLimit: 1, retrieve: async () => ({ text: FIXTURE }), funnelDir: null });
+  const server = app.listen(0, "127.0.0.1");
+  await new Promise((r) => server.once("listening", r));
+  const request = () => fetch(`http://127.0.0.1:${server.address().port}/quote`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(BODY) });
+  assert.equal((await request()).status, 200);
+  const limited = await request();
+  assert.equal(limited.status, 429);
+  assert.equal((await limited.json()).reason, "quote_rate_limited");
   await new Promise((r) => server.close(r));
 });
