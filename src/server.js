@@ -59,6 +59,21 @@ export function witnessAccepts({ evmAddress, svmAddress } = {}) {
   return a;
 }
 
+/** Fixed-window per-IP limiter: `limit` hits per 60s; default 30 when unset or invalid. */
+function perMinuteLimiter(configured, fallback = 30) {
+  const n = Number(configured ?? fallback);
+  const limit = Number.isInteger(n) && n > 0 ? n : fallback;
+  const hits = new Map();
+  return (ip) => {
+    const now = Date.now();
+    const prior = hits.get(ip);
+    const h = prior && now - prior.startedAt < 60_000 ? prior : { startedAt: now, count: 0 };
+    h.count += 1;
+    hits.set(ip, h);
+    return h.count <= limit;
+  };
+}
+
 function processKey(deps) {
   return deps.key ?? loadOrCreateKeystore(deps.keystoreDir);
 }
@@ -266,21 +281,37 @@ export async function handleWitness(body, deps = {}) {
 export function createApp(deps = {}) {
   const key = processKey(deps);
   const wired = { ...deps, key, observationsDir: deps.observationsDir ?? "data" };
-  const resourceUrl = `${deps.publicBaseUrl || "https://witness.outbid.sh"}/witness`;
+  const publicBase = deps.publicBaseUrl || "https://witness.outbid.sh";
+  const resourceUrl = `${publicBase}/witness`;
   const app = express();
+  // The host binds loopback and only the tunnel reaches it, so every socket is
+  // 127.0.0.1. Trusting loopback makes req.ip the forwarded client address, and
+  // the per-IP budgets (quote, offers gate, attest) per client instead of one
+  // bucket shared by everyone behind the tunnel. Without a forwarded header
+  // (tests, direct loopback callers) req.ip stays the socket address.
+  app.set("trust proxy", "loopback");
   const funnelDir = deps.funnelDir === undefined ? wired.observationsDir : deps.funnelDir;
-  const quoteHits = new Map();
-  const configuredQuoteLimit = Number(deps.quoteRateLimit ?? process.env.QUOTE_RATE_LIMIT_PER_MINUTE ?? 30);
-  const quoteLimit = Number.isInteger(configuredQuoteLimit) && configuredQuoteLimit > 0 ? configuredQuoteLimit : 30;
-  const quoteWindowMs = 60_000;
-  const quoteAllowed = (ip) => {
-    const now = Date.now();
-    const prior = quoteHits.get(ip);
-    const hits = prior && now - prior.startedAt < quoteWindowMs ? prior : { startedAt: now, count: 0 };
-    hits.count += 1;
-    quoteHits.set(ip, hits);
-    return hits.count <= quoteLimit;
-  };
+  const quoteAllowed = perMinuteLimiter(deps.quoteRateLimit ?? process.env.QUOTE_RATE_LIMIT_PER_MINUTE);
+  // Attestation has its own budget: a signing is not a probe, and one limiter shared
+  // across both would let a burst of free quotes starve attestations, or the reverse.
+  const attestAllowed = perMinuteLimiter(deps.attestRateLimit ?? process.env.ATTEST_RATE_LIMIT_PER_MINUTE);
+  const accepts = witnessAccepts(deps.paywall);
+  // One resource server for every paid route, built before the delivery router is
+  // mounted so attestation stands behind the same facilitator and rails as /witness.
+  let rs = null;
+  if (accepts.length) {
+    const facilitator = deps.facilitator ?? new HTTPFacilitatorClient({ url: deps.facilitatorUrl || "https://facilitator.payai.network" });
+    rs = new x402ResourceServer(facilitator);
+    if (deps.paywall.evmAddress) rs.register(EVM_NET, new ExactEvmScheme());
+    if (deps.paywall.svmAddress) rs.register(SVM_NET, new ExactSvmScheme());
+  }
+  // Delivery attestation is paid at the /witness price when the host has a paywall:
+  // the signed receipt is the product on this route too, and a free signing oracle on
+  // a public host is a cost with no counterparty. Without a paywall (tests, embedders,
+  // the in-process examples) the route serves unpaid but stays per-IP limited.
+  const attestPaywall = rs
+    ? paymentMiddlewareWithBody({ "POST /delivery/attest": { resource: `${publicBase}/delivery/attest`, accepts, mimeType: "application/json", description: "Delivery attestation — signed receipt for one paid call. $0.01 USDC.", serviceName: "witness", tags: ["delivery", "receipt", "x402"] } }, rs)
+    : null;
   app.use((req, res, next) => {
     if (req.method !== "POST" || (req.path !== "/quote" && req.path !== "/witness")) return next();
     // Every reply (handlers, bad_json, 402 challenge) is written via res.json: read its enum reason there.
@@ -309,7 +340,7 @@ export function createApp(deps = {}) {
   // Delivery attestation: mounted ahead of the host JSON parser so the route owns its body
   // errors (bad_json / body_too_large in its own envelope). The evidence model (src/delivery.js)
   // is resolved lazily inside the router; deps.attest overrides it for tests and embedders.
-  app.use(createDeliveryRouter({ key, attest: deps.attest, importModel: deps.importModel, now: deps.now, verifier: deps.verifier ?? new URL(deps.publicBaseUrl || "https://witness.outbid.sh").host, maxStalenessSeconds: deps.maxStalenessSeconds }));
+  app.use(createDeliveryRouter({ key, attest: deps.attest, importModel: deps.importModel, now: deps.now, verifier: deps.verifier ?? new URL(publicBase).host, maxStalenessSeconds: deps.maxStalenessSeconds, attestAllowed, paywall: attestPaywall }));
   app.use(express.json({ limit: "64kb" }));
   const reply = (res, out) => res.status(out.status).json(out.json);
   // Consumer offers: catalog, cart, and a gated checkout handoff. The gate
@@ -329,7 +360,6 @@ export function createApp(deps = {}) {
     if (!quoteAllowed(req.ip)) return reply(res, { status: 429, json: { reason: "quote_rate_limited" } });
     return reply(res, await handleQuote(req.body, wired));
   }));
-  const accepts = witnessAccepts(deps.paywall);
   if (accepts.length) {
     const bazaar = declareDiscoveryExtension({
       bodyType: "json",
@@ -353,10 +383,6 @@ export function createApp(deps = {}) {
         },
       },
     });
-    const facilitator = deps.facilitator ?? new HTTPFacilitatorClient({ url: deps.facilitatorUrl || "https://facilitator.payai.network" });
-    const rs = new x402ResourceServer(facilitator);
-    if (deps.paywall.evmAddress) rs.register(EVM_NET, new ExactEvmScheme());
-    if (deps.paywall.svmAddress) rs.register(SVM_NET, new ExactSvmScheme());
     // Deliverability-first: an unpaid probe runs the quote; only a deliverable
     // request reaches the paywall. A 422 never sees a 402, matching the reader.
     const deliverable = guard(async (req, res, next) => {

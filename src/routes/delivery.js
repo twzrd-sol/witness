@@ -57,15 +57,21 @@ const loadVerifier = async () => (_verifier ??= (await import("../delivery-signa
  *   500 attest_invalid    the model returned something that is not a receipt (no verdict, no limits, pre-signed)
  *   500 internal_error    anything else on our side
  *   503 attest_not_wired  no model in this process (deps.attest absent and ../delivery.js not importable)
+ *   429 attest_rate_limited  this client is over its per-IP budget (deps.attestAllowed); nothing graded or signed
+ *   402 (x402 challenge)     the host has a paywall (deps.paywall) and the request carried no valid payment;
+ *                            the challenge is in the PAYMENT-REQUIRED header, the body may be {}
  *
- * NOT HERE, ON PURPOSE. This lane adds neither:
- *   - payment: would sit exactly where POST /witness puts it in ../server.js — a
- *     shape-only probe first (a 400 must never see a 402), then
- *     paymentMiddlewareWithBody on "POST /delivery/attest", then this handler.
- *     request_metadata.payment is the slot it would fill (rail, settlement ref).
- *   - authentication: a buyer identity (payer address or bearer) would be checked
- *     in the handler before attest() and recorded in request_metadata.auth. It
- *     would never be written into the receipt unless the model binds it.
+ * Order is the contract: parse -> shape -> limiter -> paywall -> model. A request we
+ * cannot read is answered 400 before it costs a limiter slot or sees a 402, the
+ * limiter bounds how often one client can reach the key at all, and the paywall
+ * (when the host has one; ../server.js wires it at the /witness price) stands
+ * between a well-formed request and a signature. Without deps.paywall the route
+ * serves unpaid (tests, embedders, the in-process examples) but stays limited.
+ *
+ * NOT HERE, ON PURPOSE: authentication. A buyer identity (payer address or bearer)
+ * would be checked in the handler before attest() and never written into the
+ * receipt unless the model binds it. Payment is not recorded in the receipt either:
+ * the receipt binds the call it grades, not the fee paid to grade it.
  */
 
 export const ROUTE = "/delivery/attest";
@@ -184,10 +190,13 @@ export function requestMetadata(deps = {}) {
 // wrapper instead of the artifact inside it.
 const failure = (meta) => (status, reason, details) => ({ status, json: { reason, details, verifier: meta.verifier, served_at: meta.served_at } });
 
-/** Pure: body in, {status, json} out. The router below is the only HTTP in this file. */
-export async function handleDeliveryAttest(body, deps = {}) {
-  const meta = requestMetadata(deps);
-  const fail = failure(meta);
+/**
+ * Shape only, pure: the 400 this body earns, or null when it can be handed to the
+ * model. The router runs it ahead of the limiter and the paywall, so a request we
+ * cannot read never consumes a slot and never sees a 402.
+ */
+export function checkDeliveryShape(body, deps = {}) {
+  const fail = failure(requestMetadata(deps));
   if (!isObj(body)) return fail(400, "bad_body", { problems: ["body must be a JSON object with offer, request, observation"], expected: { offer: OFFER_SHAPE, request: REQUEST_SHAPE, observation: OBSERVATION_SHAPE }, example: EXAMPLE_BODY });
   const offerProblems = checkOffer(body.offer);
   if (offerProblems.length) return fail(400, "bad_offer", { problems: offerProblems, expected: OFFER_SHAPE, example: EXAMPLE_BODY.offer });
@@ -196,6 +205,15 @@ export async function handleDeliveryAttest(body, deps = {}) {
   const observationProblems = checkObservation(body.observation);
   if (observationProblems.length) return fail(400, "bad_observation", { problems: observationProblems, expected: OBSERVATION_SHAPE, example: EXAMPLE_BODY.observation });
   if (!MODES.includes(body.observation.mode)) return fail(400, "bad_mode", { problems: [`observation.mode "${body.observation.mode}" is not an evidence mode`], expected: [...MODES], example: EXAMPLE_BODY.observation.mode });
+  return null;
+}
+
+/** Pure: body in, {status, json} out. The router below is the only HTTP in this file. */
+export async function handleDeliveryAttest(body, deps = {}) {
+  const meta = requestMetadata(deps);
+  const fail = failure(meta);
+  const refused = checkDeliveryShape(body, deps);
+  if (refused) return refused;
 
   // Pass the model exactly the fields it hashes, with the optional ones made explicit.
   // spec_origin rides through. It was dropped by an earlier four-field destructure,
@@ -266,10 +284,26 @@ export function createDeliveryRouter(deps = {}) {
     }));
   const handlerDeps = { ...deps, loadAttest };
 
-  router.post(ROUTE, (req, res, next) => {
+  const contentType = (req, res, next) => {
     if (!req.is("application/json")) return reply(res, failure(requestMetadata(deps))(400, "bad_json", { problems: ["body must be application/json"] }));
     next();
-  }, express.json({ limit: deps.maxBody ?? MAX_BODY }), (req, res, next) => {
+  };
+  const shape = (req, res, next) => {
+    const refused = checkDeliveryShape(req.body, deps);
+    return refused ? reply(res, refused) : next();
+  };
+  // Per-IP budget on requests that have already passed the shape check, so a 400 is
+  // free to debug against and a 429 means "you reached the key too often", nothing else.
+  const limiter = (req, res, next) => {
+    if (typeof deps.attestAllowed === "function" && !deps.attestAllowed(req.ip)) {
+      return reply(res, failure(requestMetadata(deps))(429, "attest_rate_limited", { problems: ["too many attestation requests from this client; retry after a minute"] }));
+    }
+    next();
+  };
+  // The paywall is the host's (../server.js builds it at the /witness price); it only
+  // ever sees a request the shape check accepted, so a 400 never sees a 402.
+  const paywall = typeof deps.paywall === "function" ? [deps.paywall] : [];
+  router.post(ROUTE, contentType, express.json({ limit: deps.maxBody ?? MAX_BODY }), shape, limiter, ...paywall, (req, res, next) => {
     handleDeliveryAttest(req.body, handlerDeps).then((out) => reply(res, out)).catch(next);
   });
 

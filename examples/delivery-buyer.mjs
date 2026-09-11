@@ -112,6 +112,18 @@ async function main() {
     // A: the seller signed at emit time, and the signature verifies against the payTo -> seller_integrated.
     say("\nA. seller signed its response, signature verifies against payTo -> seller_integrated");
     const a = await attest(host.base, { offer, request, observation: observationFrom(signedResponse, "2026-09-11T04:00:04Z") });
+    if (a.status === 402) {
+      // The public host charges the /witness price for a delivery receipt; this example
+      // never pays. In-process (no WITNESS_BASE) there is no paywall and the flow runs whole.
+      say(`  HTTP 402: ${host.base} requires x402 payment for POST /delivery/attest ($0.01 USDC) and this example runs unpaid.`);
+      say("  Run it in-process (unset WITNESS_BASE), or wrap fetch with @x402/fetch to pay.");
+      return 2;
+    }
+    if (a.status !== 200) {
+      // Refused before grading (rate limited, no model, our defect): there is no receipt to walk through.
+      say(`  HTTP ${a.status} ${a.json?.reason ?? ""}: the verifier refused before grading; nothing to verify. ${JSON.stringify(a.json?.details?.problems ?? [])}`);
+      return 2;
+    }
     const ra = a.json;
     say(`  HTTP ${a.status}`);
     expect(a.status === 200 && typeof ra.receipt === "string", "receipt issued, bare (no success/data envelope)");
