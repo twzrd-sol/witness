@@ -53,8 +53,15 @@ const WRONG_PATCH = {
 
 const offerFor = (cls) => ({ resource_url: SUBJECTS[cls].url, deliverable_class: cls, price_usdc: SUBJECTS[cls].price, spec: SPECS[cls] });
 const requestFor = (cls) => ({ request_body: { op: "buy", class: cls }, settlement_ref: "5tGsKx_settlement_sig_stub", requested_at: T0 });
-const obs = (artifact, observed_at, mode, http_status = 200, seller_signature = undefined) =>
-  ({ artifact, observed_at, mode, http_status, seller_signature });
+// A verification RESULT, not a signature string: presence never grants a mode.
+const V = VERIFIER;
+const VERIFIED = Object.freeze({ verified: true, reason: "seller_signature_verified", rail: "solana",
+  checked: ["network", "binding", "payto_shape", "signature_shape", "key_import", "signature_valid", "signer_matches_payto"],
+  signer: "7VCU12sqMGTpiiwHPsrY2tfNDFqCj53htba1RX1fT5og" });
+const FORGED = Object.freeze({ verified: false, reason: "signature_invalid", rail: "solana",
+  checked: ["network", "binding", "payto_shape", "signature_shape", "key_import"] });
+const obs = (artifact, observed_at, mode, http_status = 200, signature_check = undefined) =>
+  ({ artifact, observed_at, mode, http_status, signature_check });
 const signed = (cls, observation, extra = {}) =>
   attestDelivery({ key: KEY, offer: offerFor(cls), request: requestFor(cls), observation, verifier: VERIFIER, ...extra });
 
@@ -66,7 +73,7 @@ const CASES = (cls) => {
   const wrong = { ...good, ...WRONG_PATCH[cls] };
   const incomplete = Object.fromEntries(Object.entries(good).slice(1));
   return {
-    valid: { o: obs(good, FRESH, "seller_integrated", 200, "sig_seller_abc"), verdict: DELIVERED, mode: "seller_integrated" },
+    valid: { o: obs(good, FRESH, "seller_integrated", 200, VERIFIED), verdict: DELIVERED, mode: "seller_integrated" },
     wrong: { o: obs(wrong, FRESH, "buyer_attested"), verdict: CONTRADICTED, mode: "buyer_attested" },
     incomplete: { o: obs(incomplete, FRESH, "buyer_attested"), verdict: INCOMPLETE, mode: "buyer_attested" },
     stale: { o: obs(good, STALE, "verifier_observed"), verdict: UNABLE_TO_VERIFY, mode: "verifier_observed" },
@@ -154,27 +161,39 @@ test("unparseable or offset-less timestamps are stale, never fresh", () => {
 // ---- mode discipline ----
 test("declared seller_integrated without a signature is downgraded to buyer_attested, with the reason recorded", () => {
   const cls = "issued_credential";
-  for (const sig of [undefined, null, ""]) {
+  for (const sig of [undefined, null, FORGED]) {
     const r = attest({ offer: offerFor(cls), request: requestFor(cls), observation: obs(GOOD[cls], FRESH, "seller_integrated", 200, sig), verifier: VERIFIER });
     assert.equal(r.declared_mode, "seller_integrated");
     assert.equal(r.evidence_mode, "buyer_attested");
-    assert.equal(r.seller_signature_present, false);
+    // absent verification records null; a FAILED one records why it failed, because
+    // "nobody checked" and "we checked and it was forged" are different facts.
+    if (sig === FORGED) assert.equal(r.seller_signature.verified, false);
+    else assert.equal(r.seller_signature, null);
     assert.equal(r.delivery_verdict, DELIVERED);
     assert.deepEqual(r.this_receipt_proves, [...MODE_LIMITS.buyer_attested]);
     assert.match(r.reasons.join("\n"), /downgraded to buyer_attested/);
   }
-  const kept = attest({ offer: offerFor(cls), request: requestFor(cls), observation: obs(GOOD[cls], FRESH, "seller_integrated", 200, "sig"), verifier: VERIFIER });
+  const kept = attest({ offer: offerFor(cls), request: requestFor(cls), observation: obs(GOOD[cls], FRESH, "seller_integrated", 200, VERIFIED), verifier: VERIFIER });
   assert.equal(kept.evidence_mode, "seller_integrated");
-  assert.equal(kept.seller_signature_present, true);
+  assert.equal(kept.seller_signature.verified, true);
   assert.equal(kept.reasons.length, 0);
 });
 
-test("a signature never upgrades a mode: buyer_attested with a seller_signature stays buyer_attested", () => {
+test("a verification never upgrades a mode: buyer_attested stays buyer_attested even with a passing check", () => {
   const cls = "data_json";
-  const r = attest({ offer: offerFor(cls), request: requestFor(cls), observation: obs(GOOD[cls], FRESH, "buyer_attested", 200, "sig_the_buyer_pasted"), verifier: VERIFIER });
+  const r = attest({ offer: offerFor(cls), request: requestFor(cls), observation: obs(GOOD[cls], FRESH, "buyer_attested", 200, VERIFIED), verifier: VERIFIER });
   assert.equal(r.evidence_mode, "buyer_attested");
   assert.equal(r.declared_mode, "buyer_attested");
-  assert.equal(r.seller_signature_present, true);
+  assert.equal(r.seller_signature.verified, true, "the check is still recorded, it just grants nothing");
+});
+
+test("a raw signature STRING is not a verification result and grants nothing", () => {
+  // The whole hole in one test: the prototype accepted this and called it proof.
+  const cls = "data_json";
+  const r = attest({ offer: offerFor(cls), request: requestFor(cls),
+    observation: obs(GOOD[cls], FRESH, "seller_integrated", 200, "sig_the_seller_pasted"), verifier: VERIFIER });
+  assert.equal(r.evidence_mode, "buyer_attested");
+  assert.match(r.reasons.join(" "), /did not verify|no signature verification/);
 });
 
 test("unknown mode, missing verifier, or missing key is a thrown error, not a receipt", () => {
@@ -268,10 +287,10 @@ test("two different artifacts never share an artifact_hash; the same offer alway
   const base = { request_body: { op: "buy" }, requested_at: T0 };
   assert.equal(requestHash(base), requestHash({ ...base, settlement_ref: null }));
   assert.equal(requestHash(base), requestHash({ ...base, settlement_ref: undefined }));
-  assert.notEqual(requestHash(base), requestHash({ ...base, settlement_ref: "sig" }));
+  assert.notEqual(requestHash(base), requestHash({ ...base, settlement_ref: VERIFIED }));
   // And any change to what was promised or asked changes the binding.
   assert.notEqual(offerHash(a), offerHash({ ...a, price_usdc: 999 }));
-  assert.notEqual(requestHash({ ...base, settlement_ref: "sig" }), requestHash({ ...base, settlement_ref: "sig", requested_at: FRESH }));
+  assert.notEqual(requestHash({ ...base, settlement_ref: VERIFIED }), requestHash({ ...base, settlement_ref: VERIFIED, requested_at: FRESH }));
 });
 
 // ---- signature discipline ----
@@ -283,7 +302,7 @@ test("tampering with any bound field fails verification", () => {
     offer_hash: "0".repeat(64), request_hash: "0".repeat(64), artifact_hash: "0".repeat(64),
     verifier: "someone.else", requested_at: FRESH, observed_at: T0, settlement_ref: "other_sig",
     delivery_verdict: CONTRADICTED, evidence_mode: "verifier_observed", declared_mode: "buyer_attested",
-    seller_signature_present: false, http_status: 503, resource_url: "https://evil.example/", deliverable_class: "data_json",
+    seller_signature: null, http_status: 503, resource_url: "https://evil.example/", deliverable_class: "data_json",
     price_usdc: 0, max_staleness_seconds: 999999, reasons: ["nothing to see"],
     this_receipt_proves: [], this_receipt_does_not_prove: [], signer: pubkeyB64(OTHER), schema: "delivery-attestation/v1",
   };
@@ -310,7 +329,10 @@ test("verifyDelivery rejects a well-signed receipt that violates the design", ()
   const resign = (patch) => signReceipt({ ...body, signer: pubkeyB64(KEY), ...patch }, KEY);
   assert.equal(verifyDelivery(resign({}), KEY.publicKey).valid, true);
   // A seller_integrated label with no signature behind it: exactly the borrow attest() refuses.
-  assert.equal(verifyDelivery(resign({ seller_signature_present: false }), KEY.publicKey).reason, "mode_unsupported_by_signature");
+  assert.equal(verifyDelivery(resign({ seller_signature: null }), KEY.publicKey).reason, "mode_unsupported_by_signature");
+  // ...and a verification that never checked the payTo binding is not enough either.
+  assert.equal(verifyDelivery(resign({ seller_signature: { verified: true, reason: "ok", rail: "solana", checked: ["signature_valid"] } }),
+    KEY.publicKey).reason, "mode_unsupported_by_payto_binding");
   assert.equal(verifyDelivery(resign({ delivery_verdict: "probably_fine" }), KEY.publicKey).reason, "verdict_unknown");
   assert.equal(verifyDelivery(resign({ evidence_mode: "oracle" }), KEY.publicKey).reason, "mode_unknown");
   assert.equal(verifyDelivery(resign({ this_receipt_does_not_prove: [] }), KEY.publicKey).reason, "limits_missing");
@@ -328,4 +350,43 @@ test("the signed body is exactly attest()'s body plus signer: canonical bytes re
   assert.deepEqual(rest, { ...attest(args), signer: pubkeyB64(KEY) });
   assert.equal(canonical(rest), canonical(JSON.parse(JSON.stringify(rest))));
   assert.equal(attest(args).offer_hash, attest(structuredClone(args)).offer_hash);
+});
+
+
+// ---------------------------------------------------------------------------
+// The hole the presence check left open. A forged signature is PRESENT; only
+// verification tells it from a real one, and only verification may grant the mode.
+// ---------------------------------------------------------------------------
+
+test("a present but INVALID seller signature does not grant seller_integrated", () => {
+  const r = attest({ offer: offerFor("data_json"), request: requestFor("data_json"),
+    observation: obs(GOOD.data_json, FRESH, "seller_integrated", 200, FORGED), verifier: VERIFIER });
+  assert.equal(r.declared_mode, "seller_integrated");
+  assert.equal(r.evidence_mode, "buyer_attested", "a forged signature borrowed the stronger label");
+  assert.equal(r.seller_signature.verified, false);
+  assert.match(r.reasons.join(" "), /did not verify \(signature_invalid\)/);
+  assert.deepEqual(r.this_receipt_proves, MODE_LIMITS.buyer_attested);
+});
+
+test("the receipt records WHAT was checked, not merely that something was present", () => {
+  const r = attest({ offer: offerFor("data_json"), request: requestFor("data_json"),
+    observation: obs(GOOD.data_json, FRESH, "seller_integrated", 200, VERIFIED), verifier: VERIFIER });
+  assert.ok(r.seller_signature.checked.includes("signer_matches_payto"),
+    "a granted mode must show the payTo binding was actually checked");
+  assert.equal(r.seller_signature.rail, "solana");
+  assert.equal(r.seller_signature.signer, "7VCU12sqMGTpiiwHPsrY2tfNDFqCj53htba1RX1fT5og");
+});
+
+test("verified must be a strict boolean: truthy impostors do not grant the mode", () => {
+  for (const impostor of [{ verified: "true" }, { verified: 1 }, { verified: {} }, {}, null]) {
+    const r = attest({ offer: offerFor("data_json"), request: requestFor("data_json"),
+      observation: obs(GOOD.data_json, FRESH, "seller_integrated", 200, impostor), verifier: VERIFIER });
+    assert.equal(r.evidence_mode, "buyer_attested", `truthy ${JSON.stringify(impostor)} granted the mode`);
+  }
+});
+
+test("a verification result cannot smuggle a mode onto a buyer_attested observation", () => {
+  const r = attest({ offer: offerFor("data_json"), request: requestFor("data_json"),
+    observation: obs(GOOD.data_json, FRESH, "buyer_attested", 200, VERIFIED), verifier: VERIFIER });
+  assert.equal(r.evidence_mode, "buyer_attested");
 });

@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { canonical, pubkeyB64, signReceipt, verifyReceipt } from "./receipt.js";
+import { effectiveEvidenceMode } from "./delivery-signature.js";
 
 /**
  * Call-specific delivery attestation for A2A commerce.
@@ -143,7 +144,8 @@ const parseIso = (s) => (typeof s === "string" && ISO_WITH_OFFSET.test(s) ? Date
  *
  *   offer        { resource_url, deliverable_class, price_usdc, spec }
  *   request      { request_body, settlement_ref, requested_at }
- *   observation  { artifact, observed_at, mode, http_status, seller_signature }
+ *   observation  { artifact, observed_at, mode, http_status, signature_check }
+ *                signature_check is verifySellerSignature()'s result, or null
  *                artifact null means nothing came back
  */
 export function attest({ offer, request, observation: obs, verifier, max_staleness_seconds = DEFAULT_MAX_STALENESS_SECONDS }) {
@@ -171,13 +173,18 @@ export function attest({ offer, request, observation: obs, verifier, max_stalene
     reasons = [...reasons, "artifact observed outside the freshness window for this request; it may not be what this call returned"];
   }
 
-  // seller_integrated claims its strength from a signature. Without one it is only
-  // as good as buyer attestation and must not borrow the stronger label. The
-  // declared mode is kept beside the effective one so the downgrade is visible.
-  let effective_mode = obs.mode;
-  if (obs.mode === "seller_integrated" && !obs.seller_signature) {
-    effective_mode = "buyer_attested";
-    reasons = [...reasons, "declared seller_integrated but carried no seller signature; downgraded to buyer_attested"];
+  // seller_integrated claims its strength from a signature that VERIFIES and is
+  // bound to the payTo the buyer actually paid. A signature that is merely
+  // present proves nothing - a dishonest seller would forge any string and earn
+  // the strongest verdict available. The caller runs verifySellerSignature()
+  // (async, so it stays out of this pure function) and passes the result here.
+  // Absent result, absent grant: silence is not a pass.
+  const check = obs.signature_check ?? null;
+  const effective_mode = effectiveEvidenceMode(obs.mode, check);
+  if (obs.mode === "seller_integrated" && effective_mode !== "seller_integrated") {
+    reasons = [...reasons, check
+      ? `declared seller_integrated but the seller signature did not verify (${check.reason}); downgraded to buyer_attested`
+      : "declared seller_integrated but no signature verification was supplied; downgraded to buyer_attested"];
   }
 
   return {
@@ -193,7 +200,15 @@ export function attest({ offer, request, observation: obs, verifier, max_stalene
     requested_at: request.requested_at,
     settlement_ref: request.settlement_ref ?? null,
     http_status: obs.http_status ?? null,
-    seller_signature_present: Boolean(obs.seller_signature),
+    // Not "was a signature present" - that was the hole. What was CHECKED, and
+    // what the check concluded, so a reader can see why a mode was granted.
+    seller_signature: check === null ? null : {
+      verified: check.verified === true,
+      reason: check.reason ?? null,
+      rail: check.rail ?? null,
+      checked: [...(check.checked ?? [])],
+      signer: check.signer ?? null,
+    },
     verifier,
     resource_url: offer.resource_url,
     deliverable_class: offer.deliverable_class,
@@ -248,7 +263,18 @@ export function verifyDelivery(doc, trustedPublicKey) {
   if (doc.signer !== pubkeyB64({ publicKey: trustedPublicKey })) return fail("signer_mismatch");
   if (!VERDICTS.includes(doc.delivery_verdict)) return fail("verdict_unknown");
   if (!MODES.includes(doc.evidence_mode) || !MODES.includes(doc.declared_mode)) return fail("mode_unknown");
-  if (doc.evidence_mode === "seller_integrated" && doc.seller_signature_present !== true) return fail("mode_unsupported_by_signature");
+  // A receipt claiming the strongest mode must carry the verification that earned
+  // it - and that verification must say it checked the payTo binding. A receipt
+  // asserting seller_integrated off an unverified or unbound signature is exactly
+  // the forgery this module exists to refuse, even when the Witness signature
+  // over the body is perfectly valid.
+  if (doc.evidence_mode === "seller_integrated") {
+    const sig = doc.seller_signature;
+    if (!isObject(sig) || sig.verified !== true) return fail("mode_unsupported_by_signature");
+    if (!Array.isArray(sig.checked) || !sig.checked.includes("signer_matches_payto")) {
+      return fail("mode_unsupported_by_payto_binding");
+    }
+  }
   const b = binds(doc);
   if (!(b.offer && b.request && b.verifier && b.timestamp)) return fail("binding_incomplete");
   if (!Array.isArray(doc.this_receipt_does_not_prove) || !doc.this_receipt_does_not_prove.length) return fail("limits_missing");
