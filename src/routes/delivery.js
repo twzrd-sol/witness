@@ -94,7 +94,7 @@ export const EXAMPLE_BODY = Object.freeze({
   observation: { artifact: { query: "acme corp", results: [{ name: "A" }], result_count: 1 }, observed_at: "2026-09-11T04:00:20Z", mode: "buyer_attested", http_status: 200, seller_signature: null },
 });
 
-const OFFER_SHAPE = { resource_url: "string", deliverable_class: "string", price_usdc: "number", spec: { required_fields: { "<field>": SPEC_TYPES.join("|") }, must_equal: { "<field>": "<literal>" } } };
+const OFFER_SHAPE = { resource_url: "string", deliverable_class: "string", price_usdc: "number", spec: { required_fields: { "<field>": SPEC_TYPES.join("|") }, must_equal: { "<field>": "<literal>" } }, spec_origin: `${SPEC_ORIGINS.join("|")} (optional; absent = buyer_authored)` };
 const REQUEST_SHAPE = { request_body: "object", settlement_ref: "string|null", requested_at: "string (ISO-8601)" };
 const OBSERVATION_SHAPE = { artifact: "any JSON value; null = nothing came back (required key)", observed_at: "string (ISO-8601)", mode: MODES.join("|"), http_status: "integer|null", seller_signature: "{network, payTo, signature}|null", notes: "string[]" };
 
