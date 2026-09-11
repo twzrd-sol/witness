@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import copy
 import os
 from typing import Any
@@ -120,6 +121,38 @@ def session(sid: str = "s1") -> ShoppingSessionContext:
 def backend(fake: FakeWitness | None = None) -> tuple[WitnessStorefront, FakeWitness]:
     fake = fake or FakeWitness()
     return WitnessStorefront("https://witness.test", fetch_json=fake), fake
+
+
+def test_default_fetch_sends_a_named_user_agent(monkeypatch):
+    """The public edge answers 403 to Python-urllib's default UA; the adapter must not send it."""
+    import urllib.request
+
+    from witness_storefront import USER_AGENT
+    from witness_storefront.backend import _urllib_fetch_json
+
+    seen: dict[str, str] = {}
+
+    class _Res:
+        status = 200
+
+        def read(self):
+            return b'{"offers": []}'
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    def fake_urlopen(req, timeout):
+        seen.update({k.lower(): v for k, v in req.header_items()})
+        return _Res()
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    status, body = asyncio.run(_urllib_fetch_json(5.0)("GET", "https://witness.test/api/offers", None))
+    assert (status, body) == (200, {"offers": []})
+    assert seen["user-agent"] == USER_AGENT
+    assert not seen["user-agent"].startswith("Python-urllib")
 
 
 def test_base_url_must_be_https():

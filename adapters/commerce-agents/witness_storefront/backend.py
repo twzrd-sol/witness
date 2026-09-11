@@ -48,6 +48,9 @@ from shopping_agent import (
 )
 
 DEFAULT_BASE_URL = "https://witness.outbid.sh"
+# The public host's edge rejects the stdlib default ("Python-urllib/x.y") with a 403; a
+# named client is accepted. Sent on every request by the default fetch.
+USER_AGENT = "witness-storefront/0.1 (+https://witness.outbid.sh)"
 
 FetchJson = Callable[[str, str, dict[str, Any] | None], Awaitable[tuple[int, Any]]]
 
@@ -74,7 +77,7 @@ def _urllib_fetch_json(timeout: float) -> FetchJson:
 
     def _sync(method: str, url: str, body: dict[str, Any] | None) -> tuple[int, Any]:
         data = json.dumps(body).encode() if body is not None else None
-        headers = {"accept": "application/json"}
+        headers = {"accept": "application/json", "user-agent": USER_AGENT}
         if data is not None:
             headers["content-type"] = "application/json"
         req = urllib.request.Request(url, data=data, method=method, headers=headers)
