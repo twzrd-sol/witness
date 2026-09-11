@@ -91,6 +91,19 @@ test("GET /offers/:id is 404 for unknown offers", async () => {
   });
 });
 
+test("GET /api/offers lists every catalog record in order, same shape as the single-offer route", async () => {
+  await withServer(async (base) => {
+    const res = await fetch(`${base}/api/offers`);
+    assert.equal(res.status, 200);
+    const { offers } = await res.json();
+    assert.deepEqual(offers.map((o) => o.id), Object.keys(OFFERS));
+    for (const o of offers) {
+      const single = await (await fetch(`${base}/api/offers/${o.id}`)).json();
+      assert.deepEqual(o, single, o.id);
+    }
+  });
+});
+
 test("GET /api/offers/:id returns the merchant catalog record with its Witness method", async () => {
   await withServer(async (base) => {
     const res = await fetch(`${base}/api/offers/${ID}`);

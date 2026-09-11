@@ -1,0 +1,27 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "witness-storefront"
+version = "0.1.0"
+description = "Witness offers as a StorefrontBackend for Claude Commerce Agents: catalog, cart, and a checkout handoff gated on a live price observation."
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+# shopping-agent-core and commerce-common are unpublished: install them editable from
+# a checkout of anthropics/commerce-agents first (see README.md).
+dependencies = [
+  "shopping-agent-core==0.1.0.dev0",
+  "commerce-common==0.1.0.dev0",
+  "pydantic>=2.7",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "pytest-asyncio>=0.23"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["witness_storefront"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

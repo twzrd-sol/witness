@@ -73,15 +73,26 @@ the catalog claims. Witness does, inside `prepare_checkout`:
   an agent that wants a signed, offline-verifiable receipt of the observation
   pays `POST /witness` with the same method (`verifyReceipt` in `src/receipt.js`).
 
-## What would make Witness a blueprint backend
+## Witness as a blueprint backend
 
-1. A `StorefrontBackend` adapter (Python, in the blueprint's package layout)
-   whose `search_products` reads `GET /api/offers/:id` (or a list endpoint,
-   once there is more than one offer per rail), and whose `prepare_checkout`
-   posts to `POST /api/quotes` and returns `checkout_url` or the x402
-   `accepts[]`, treating a 409 as "do not present checkout".
-2. Evals authored with `/author-commerce-evals` covering the contradicted
-   price and changed-payee paths, so the gate is exercised, not assumed.
+`adapters/commerce-agents/` ships `witness_storefront.WitnessStorefront`, a
+`StorefrontBackend` over these routes, so the blueprint's shopping agent runs
+against Witness unchanged on the Messages API, the Agent SDK, or Managed Agents:
+
+- `search_products` / `get_product_details` read `GET /api/offers` and
+  `GET /api/offers/{id}`; each offer is one plain product with the rail as its
+  category.
+- The cart is in memory per session; `x402` offers raise `Unavailable` (the
+  agent pays those per call, not through a cart).
+- `checkout_handoff` posts each line to `POST /api/quotes`. A 200 becomes the
+  merchant `CheckoutHandoff`; a 409 raises `HandoffWithheld`, so the host never
+  renders a checkout card for a price the merchant no longer says.
+- No orders are invented; policies come from the license links plus one
+  passage on how checkout works.
+
+Tests run against a fake Witness by default and against the public host with
+`WITNESS_LIVE=1`. Remaining: evals authored with `/author-commerce-evals`
+covering the contradicted-price and changed-payee paths.
 
 ## Sources
 
