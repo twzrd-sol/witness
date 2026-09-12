@@ -32,7 +32,7 @@ test("openapi contract: quote free, witness quote-first paid x402, canonical ori
   const wreq = w.requestBody.content["application/json"];
   assert.deepEqual(wreq.schema.required, ["url", "extract"]);
   assert.equal(wreq.schema.properties.retrieval.type, "string");
-  assert.deepEqual(wreq.schema.properties.retrieval.enum, ["scrape"], "retrieval is an enum (scrape only)");
+  assert.deepEqual(wreq.schema.properties.retrieval.enum, ["scrape", "browse"], "retrieval is scrape or explicit browse — never an auto-upgrade");
   assert.equal(wreq.schema.properties.retrieval.example, "scrape");
   assert.deepEqual(wreq.schema.properties.assertion.type, ["string", "null"], "assertion is string|null: null is the no-assertion path a receipt method echoes");
   assert.equal(wreq.schema.properties.assertion.example, "rank < 100");

@@ -41,7 +41,7 @@ const LLMS = `# witness
 
 > Confirm a published price, a stock number, a release, a ranking, or that a public record is present — and get a signed, time-bounded receipt. $0.01 USDC over x402.
 
-- POST /quote — free deliverability probe. 200 = the observation can be performed now, and the body announces the verdict you will be issued; 422 = not. Nothing is billed either way.
+- POST /quote — free deliverability probe. 200 = the observation can be performed now, and the body announces the verdict you will be issued; 422 = not. Nothing is billed either way. Default retrieval is scrape ($0.01). A JS wall is a free 422 needs_browser — send retrieval=browse ($0.06) yourself. Scrape never auto-upgrades.
 - POST /witness — same body + x402 payment. Signed receipt: value, assertion, verdict, observed_at, source_hash, evidence, agreement, method, spec_hash, valid_until, vantage.
 - POST /delivery/attest — after a paid call to any x402 seller, submit {offer, request, observation} and get a signed delivery receipt (delivered | contradicted | incomplete | unable_to_verify) bound to offer_hash, request_hash, artifact_hash. $0.01 USDC over x402; shape and limits at GET /openapi.json.
 
@@ -154,13 +154,15 @@ Key: GET /pubkey · Payment: GET /.well-known/x402 · Methods: GET /llms.txt
 export const READER_HOST = "reader.outbid.sh";
 /** Scrape is $0.005. Bound before sign — the SDK default is $1. */
 export const READER_MAX_AMOUNT_PER_PAYMENT = "$0.005";
+/** Browse is $0.05. A separate client so a scrape 402 cannot ride the browse ceiling. */
+export const READER_BROWSE_MAX_AMOUNT_PER_PAYMENT = "$0.05";
 
 /**
- * Paying fetch for reader.outbid.sh/scrape (Base x402, $0.005): only when
+ * Paying fetch for reader.outbid.sh scrape/browse: only when
  * X402_READER_PAYMENTS_ENABLED=1 AND a valid wallet key is set. Anything
  * else returns {} — the reader stays on the unpaid path, which fails closed.
- * The wrapper is host-pinned and spend-capped so a 402 from anywhere else,
- * or above scrape price, cannot be signed.
+ * The wrapper is host-pinned and path-capped so a 402 from anywhere else,
+ * or above that path's price, cannot be signed.
  */
 export function readerPayment(env, readerFetch) {
   if (env.X402_READER_PAYMENTS_ENABLED !== "1") return {};
@@ -169,18 +171,29 @@ export function readerPayment(env, readerFetch) {
     console.error("witness: X402_READER_PAYMENTS_ENABLED=1 but X402_READER_WALLET_KEY missing/invalid — reader stays unpaid");
     return {};
   }
-  const client = new x402Client()
-    .register("eip155:8453", new ExactEvmScheme(privateKeyToAccount(key)))
-    .setSpendControls({ maxAmountPerPayment: READER_MAX_AMOUNT_PER_PAYMENT });
-  const inner = wrapFetchWithPayment(readerFetch ?? globalThis.fetch, client);
+  const account = privateKeyToAccount(key);
+  const paying = (max) => wrapFetchWithPayment(
+    readerFetch ?? globalThis.fetch,
+    new x402Client().register("eip155:8453", new ExactEvmScheme(account)).setSpendControls({ maxAmountPerPayment: max }),
+  );
+  const scrapeFetch = paying(READER_MAX_AMOUNT_PER_PAYMENT);
+  const browseFetch = paying(READER_BROWSE_MAX_AMOUNT_PER_PAYMENT);
   const payFetch = async (input, init) => {
     const raw = typeof input === "string" || input instanceof URL ? String(input) : input && input.url;
-    let host;
-    try { host = new URL(raw).hostname; } catch { throw new Error("reader_host_refused"); }
-    if (host !== READER_HOST) throw new Error("reader_host_refused");
-    return inner(input, init);
+    let parsed;
+    try { parsed = new URL(raw); } catch { throw new Error("reader_host_refused"); }
+    if (parsed.hostname !== READER_HOST) throw new Error("reader_host_refused");
+    const path = parsed.pathname.replace(/\/+$/, "") || "/";
+    if (path === "/scrape") return scrapeFetch(input, init);
+    if (path === "/browse") return browseFetch(input, init);
+    throw new Error("reader_path_refused");
   };
-  return { paymentsEnabled: true, payFetch, maxAmountPerPayment: READER_MAX_AMOUNT_PER_PAYMENT };
+  return {
+    paymentsEnabled: true,
+    payFetch,
+    maxAmountPerPayment: READER_MAX_AMOUNT_PER_PAYMENT,
+    maxAmountPerPaymentBrowse: READER_BROWSE_MAX_AMOUNT_PER_PAYMENT,
+  };
 }
 
 export function createHostApp(env = process.env, { readerFetch, probeFetch, gateTtlMs, attest, importModel, intelFetch } = {}) {

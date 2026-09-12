@@ -17,12 +17,12 @@ export const CONTRACT_STATUSES = Object.freeze([
 const HTTP_METHODS = Object.freeze(["get", "post", "put", "patch", "delete"]);
 
 /** Reason-shaped tokens that appear in OpenAPI prose (not verdicts like "supported"). */
-const REASON_TOKEN = /\b(bad_[a-z0-9_]+|attest_[a-z0-9_]+|body_too_large|paywall_unavailable|internal_error|offer_not_found|quote_rate_limited|get_discovery_only_use_post|gate_not_wired)\b/g;
+const REASON_TOKEN = /\b(bad_[a-z0-9_]+|attest_[a-z0-9_]+|body_too_large|paywall_unavailable|internal_error|offer_not_found|quote_rate_limited|get_discovery_only_use_post|gate_not_wired|needs_browser)\b/g;
 const QUOTED = /"([a-z][a-z0-9_]{2,})"/g;
 
 const REASON_PREFIX = /^(bad_|attest_|prior_|retrieve_|extract_|assertion_|quote_|get_|gate_|body_|paywall_|offer_|intel_|internal_)/;
 
-const REASON_EXACT = /^(bad_[a-z0-9_]+|attest_[a-z0-9_]+|body_too_large|paywall_unavailable|internal_error|offer_not_found|quote_rate_limited|get_discovery_only_use_post|gate_not_wired)$/;
+const REASON_EXACT = /^(bad_[a-z0-9_]+|attest_[a-z0-9_]+|body_too_large|paywall_unavailable|internal_error|offer_not_found|quote_rate_limited|get_discovery_only_use_post|gate_not_wired|needs_browser)$/;
 
 export function isReasonLike(token) {
   return typeof token === "string" && (REASON_PREFIX.test(token) || REASON_EXACT.test(token));

@@ -259,15 +259,19 @@ const STIMULI = [
   { id: "quote.400.bad_json", path: "/quote", method: "POST", status: 400, reason: "bad_json", host: "free", headers: { "content-type": "application/json" }, body: "{not json" },
   { id: "quote.400.bad_extract", path: "/quote", method: "POST", status: 400, reason: "bad_extract", host: "free", body: { url: "https://example.com/pricing", extract: { rank: "bogus" } } },
   { id: "quote.400.bad_assertion", path: "/quote", method: "POST", status: 400, reason: "bad_assertion", host: "free", body: { ...WITNESS_BODY, assertion: 7 } },
+  { id: "quote.400.bad_retrieval", path: "/quote", method: "POST", status: 400, reason: "bad_retrieval", host: "free", body: { ...WITNESS_BODY, retrieval: "chromium" } },
   { id: "quote.422.https_only", path: "/quote", method: "POST", status: 422, reason: "https_only", host: "free", body: { url: "http://127.0.0.1/", extract: { a: "string" } } },
+  { id: "quote.422.needs_browser", path: "/quote", method: "POST", status: 422, reason: "needs_browser", host: "free", body: WITNESS_BODY, extra: { retrieve: async () => { throw new Error("needs_browser"); } } },
   { id: "quote.429.quote_rate_limited", path: "/quote", method: "POST", status: 429, reason: "quote_rate_limited", host: "quote1", body: WITNESS_BODY, prime: 1 },
 
   // --- POST /witness (unpaid; deliverable-first) ---
   { id: "witness.post.400.bad_json", path: "/witness", method: "POST", status: 400, reason: "bad_json", host: "paywalled", headers: { "content-type": "application/json" }, body: "{not json" },
   { id: "witness.post.400.bad_extract", path: "/witness", method: "POST", status: 400, reason: "bad_extract", host: "paywalled", body: { url: "https://example.com/pricing", extract: { rank: "bogus" } } },
   { id: "witness.post.400.bad_assertion", path: "/witness", method: "POST", status: 400, reason: "bad_assertion", host: "paywalled", body: { ...WITNESS_BODY, assertion: 7 } },
+  { id: "witness.post.400.bad_retrieval", path: "/witness", method: "POST", status: 400, reason: "bad_retrieval", host: "paywalled", body: { ...WITNESS_BODY, retrieval: "chromium" }, noChallenge: true },
   { id: "witness.post.402", path: "/witness", method: "POST", status: 402, host: "paywalled", body: WITNESS_BODY, challenge: true },
   { id: "witness.post.422.https_only", path: "/witness", method: "POST", status: 422, reason: "https_only", host: "paywalled", body: { url: "http://127.0.0.1/", extract: { a: "string" } }, noChallenge: true },
+  { id: "witness.post.422.needs_browser", path: "/witness", method: "POST", status: 422, reason: "needs_browser", host: "paywalled", body: WITNESS_BODY, noChallenge: true, extra: { retrieve: async () => { throw new Error("needs_browser"); } } },
 
   // --- POST /delivery/attest ---
   { id: "attest.400.bad_json", path: "/delivery/attest", method: "POST", status: 400, reason: "bad_json", host: "free", headers: { "content-type": "application/json" }, body: "{not json" },
@@ -375,7 +379,7 @@ test("generated matrix: every stimulus targets a documented contract status", ()
 
 test("generated matrix names the documented quote/delivery reason enums", () => {
   const quote400 = CELL_BY.get("POST /quote 400");
-  assert.deepEqual(quote400.reasons, ["bad_json", "bad_extract", "bad_assertion"]);
+  assert.deepEqual(quote400.reasons, ["bad_json", "bad_extract", "bad_assertion", "bad_retrieval"]);
   const attest400 = CELL_BY.get("POST /delivery/attest 400");
   assert.deepEqual(attest400.reasons, ["bad_json", "bad_body", "bad_offer", "bad_paid_request", "bad_observation", "bad_mode"]);
   const payout400 = CELL_BY.get("POST /verify/payout/quote 400");

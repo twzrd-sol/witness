@@ -81,6 +81,33 @@ test("a failing paid retry stays fail-closed", async () => {
   await assert.rejects(makeRetrieve({ fetch: async () => res402, payFetch: async () => empty, paymentsEnabled: true })("https://example.com"), /reader_empty/);
 });
 
+test("makeRetrieve browse hits /browse and scrape never does", async () => {
+  const seen = [];
+  const fetch = async (url) => {
+    seen.push(url);
+    return { ok: true, status: 200, text: async () => "hello" };
+  };
+  const retrieve = makeRetrieve({ fetch });
+  assert.equal(await retrieve("https://example.com/top"), "hello");
+  assert.equal(await retrieve("https://example.com/app", { retrieval: "browse" }), "hello");
+  assert.deepEqual(seen, [
+    "https://reader.outbid.sh/scrape?url=https%3A%2F%2Fexample.com%2Ftop",
+    "https://reader.outbid.sh/browse?url=https%3A%2F%2Fexample.com%2Fapp",
+  ]);
+});
+
+test("reader 422 needs_browser is terminal — scrape does not hop to /browse", async () => {
+  const seen = [];
+  const retrieve = makeRetrieve({
+    fetch: async (url) => {
+      seen.push(url);
+      return { ok: false, status: 422, text: async () => JSON.stringify({ ok: false, reason: "needs_browser" }) };
+    },
+  });
+  await assert.rejects(retrieve("https://example.com/spa"), /needs_browser/);
+  assert.deepEqual(seen, ["https://reader.outbid.sh/scrape?url=https%3A%2F%2Fexample.com%2Fspa"]);
+});
+
 test("quote 200 with fixture retrieve — reader URL carries the encoded target", async () => {
   let seen;
   const readerFetch = async (url) => {

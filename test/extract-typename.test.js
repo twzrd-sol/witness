@@ -47,7 +47,7 @@ test('nested dialect: {"type":"integer"} reads as number — rank 7 with "rank <
   assert.deepEqual(normalizeExtract({ rank: { type: "integer" } }), { rank: "number" });
   const body = { url: URL, extract: { rank: { type: "integer" } }, assertion: "rank < 100" };
   const q = await handleQuote(body, { retrieve });
-  assert.deepEqual([q.status, q.json], [200, { price_usdc: "0.01", replicas: 1, can_deliver: true, verdict: "supported", verdict_reason: null }]);
+  assert.deepEqual([q.status, q.json], [200, { price_usdc: "0.01", replicas: 1, can_deliver: true, retrieval: "scrape", verdict: "supported", verdict_reason: null }]);
   const w = await handleWitness(body, { retrieve, paid: true, key: generateProcessKey() });
   assert.equal(w.status, 200);
   assert.strictEqual(w.json.value.rank, 7, 'the number 7, never the string "7"');
@@ -112,7 +112,7 @@ test("openapi documents the 400 body: reason enum with expected/example, one con
   assert.equal(r400, doc.paths["/witness"].post.responses["400"]);
   assert.match(r400.description, /never billed/i);
   const schema = r400.content["application/json"].schema;
-  assert.deepEqual(schema.properties.reason.enum, ["bad_json", "bad_extract", "bad_assertion"]);
+  assert.deepEqual(schema.properties.reason.enum, ["bad_json", "bad_extract", "bad_assertion", "bad_retrieval"]);
   assert.ok(schema.properties.expected && schema.properties.example, "the teaching fields are documented");
   const validate = new Ajv({ strict: false }).compile(schema);
   await withServer({}, async (base) => {

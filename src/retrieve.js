@@ -1,4 +1,22 @@
-const READER_DEFAULT = "https://reader.outbid.sh/scrape";
+export const READER_ORIGIN = "https://reader.outbid.sh";
+export const READER_SCRAPE_PATH = "/scrape";
+export const READER_BROWSE_PATH = "/browse";
+const READER_DEFAULT = `${READER_ORIGIN}${READER_SCRAPE_PATH}`;
+
+/** `null` means the caller sent a value that is not a retrieval. Omitted is scrape. */
+export function normalizeRetrieval(value) {
+  if (value == null || value === "") return "scrape";
+  if (value === "scrape" || value === "browse") return value;
+  return null;
+}
+
+export function readerResourceUrl(readerUrl, retrieval = "scrape") {
+  const base = new URL(readerUrl);
+  base.pathname = retrieval === "browse" ? READER_BROWSE_PATH : READER_SCRAPE_PATH;
+  base.search = "";
+  base.hash = "";
+  return `${base.origin}${base.pathname}`;
+}
 
 /**
  * The reader answers with a transport envelope -- {"ok":true,"title":...,
@@ -16,7 +34,10 @@ export function unwrapReader(text) {
   try { parsed = JSON.parse(text); } catch { return text; }
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return text;
   // The reader reporting its own failure is a retrieval failure, not a document.
-  if (parsed.ok === false) throw new Error("reader_not_ok");
+  if (parsed.ok === false) {
+    if (parsed.reason === "needs_browser") throw new Error("needs_browser");
+    throw new Error("reader_not_ok");
+  }
   if (typeof parsed.content === "string" && parsed.content.trim()) return parsed.content;
   // ok:true with blank/missing content is a failed retrieve, not a document whose
   // fields are the transport keys (title, ok, content).
@@ -36,13 +57,24 @@ export function unwrapReader(text) {
  * reader.outbid.sh only). A paying retry that fails is still fail-closed.
  */
 export function makeRetrieve({ fetch: doFetch = globalThis.fetch, payFetch, paymentsEnabled = process.env.X402_READER_PAYMENTS_ENABLED === "1", readerUrl = process.env.READER_URL || READER_DEFAULT, timeoutMs = 20000 } = {}) {
-  const attempt = (f, url) => f(`${readerUrl}?url=${encodeURIComponent(url)}`, { signal: AbortSignal.timeout(timeoutMs), redirect: "manual", headers: { accept: "text/plain" } });
-  return async function retrieve(url) {
+  const attempt = (f, url, retrieval) => f(`${readerResourceUrl(readerUrl, retrieval)}?url=${encodeURIComponent(url)}`, { signal: AbortSignal.timeout(timeoutMs), redirect: "manual", headers: { accept: "text/plain" } });
+  return async function retrieve(url, opts = {}) {
     if (typeof url !== "string" || !url.startsWith("https://")) throw new Error("retrieve_refused");
-    let res = await attempt(doFetch, url);
-    if (res.status === 402 && paymentsEnabled && payFetch) res = await attempt(payFetch, url);
-    if (!res.ok) throw new Error(`reader_${res.status}`);
+    const retrieval = normalizeRetrieval(opts.retrieval) ?? "scrape";
+    let res = await attempt(doFetch, url, retrieval);
+    if (res.status === 402 && paymentsEnabled && payFetch) res = await attempt(payFetch, url, retrieval);
     const text = await res.text();
+    if (!res.ok) {
+      if (res.status === 422) {
+        try {
+          const parsed = JSON.parse(text);
+          if (parsed && parsed.reason === "needs_browser") throw new Error("needs_browser");
+        } catch (e) {
+          if (e && e.message === "needs_browser") throw e;
+        }
+      }
+      throw new Error(`reader_${res.status}`);
+    }
     if (!text || !text.trim()) throw new Error("reader_empty");
     const doc = unwrapReader(text);
     if (!doc || !doc.trim()) throw new Error("reader_empty");

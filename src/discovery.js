@@ -15,7 +15,7 @@ export function buildLlmsText() {
 
 > Confirm a published price, a stock number, a release, a ranking, or that a public record is present — and get a signed, time-bounded receipt. $0.01 USDC over x402.
 
-- POST /quote — free deliverability probe. 200 = the observation can be performed now, and the body announces the verdict you will be issued; 422 = not. Nothing is billed either way.
+- POST /quote — free deliverability probe. 200 = the observation can be performed now, and the body announces the verdict you will be issued; 422 = not. Nothing is billed either way. Default retrieval is scrape ($0.01). A JS wall is a free 422 needs_browser — send retrieval=browse ($0.06) yourself. Scrape never auto-upgrades.
 - POST /witness — same body + x402 payment. Signed receipt: value, assertion, verdict, observed_at, source_hash, evidence, agreement, method, spec_hash, valid_until, vantage.
 
 Verdicts. A 200 quote carries the verdict the receipt will be signed with, so you always know the answer before paying, and the price is the same for all of them:

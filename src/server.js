@@ -1,6 +1,7 @@
 import express from "express";
 import { assertPublicHttps, SsrfError } from "./ssrf.js";
 import { EXTRACT_SCHEMA, fillExtract, normalizeExtract } from "./extract.js";
+import { normalizeRetrieval } from "./retrieve.js";
 import { loadOrCreateKeystore } from "./keystore.js";
 import { pubkeyB64, signReceipt, sourceHash, verifyReceipt } from "./receipt.js";
 import { buildEvidenceBundle, classifyVerdict } from "./evidence.js";
@@ -19,7 +20,9 @@ import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { ExactSvmScheme } from "@x402/svm/exact/server";
 
 export const PRICE_USDC = "0.01";
+export const BROWSE_PRICE_USDC = "0.06";
 const AMOUNT_ATOMIC = "10000"; // 0.01 USDC, 6 decimals
+const BROWSE_AMOUNT_ATOMIC = "60000"; // 0.06 USDC — reader browse $0.05 + coord
 const EVM_NET = "eip155:8453";
 const SVM_NET = "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp";
 const SVM_USDC = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
@@ -64,6 +67,10 @@ export function railAccepts(price, { evmAddress, svmAddress } = {}) {
 
 export function witnessAccepts(paywall = {}) {
   return railAccepts("$0.01", paywall);
+}
+
+export function browseWitnessAccepts(paywall = {}) {
+  return railAccepts(`$${BROWSE_PRICE_USDC}`, paywall);
 }
 
 /**
@@ -117,8 +124,8 @@ export const BILLABLE_VERDICTS = Object.freeze(["supported", "contradicted", "in
 export const NEVER_BILLED = Object.freeze([
   "unable_to_verify", "assertion_malformed", "assertion_field_not_extracted", "extract_none",
   "evidence_mismatch", "verdict_mismatch",
-  "retrieve_failed", "retrieve_empty", "retrieve_not_wired",
-  "bad_json", "bad_extract", "bad_assertion", "replicas_unsupported",
+  "retrieve_failed", "retrieve_empty", "retrieve_not_wired", "needs_browser",
+  "bad_json", "bad_extract", "bad_assertion", "bad_retrieval", "replicas_unsupported",
   "ssrf_refused", "server_error",
 ]);
 
@@ -140,6 +147,8 @@ function checkPrior(prior, publicKey, method) {
 
 export async function handleQuote(body, { retrieve, key, retrieval } = {}) {
   if (!body || typeof body !== "object") return { status: 400, json: { reason: "bad_json" } };
+  const mode = retrieval ?? normalizeRetrieval(body.retrieval);
+  if (mode == null) return { status: 400, json: { reason: "bad_retrieval", expected: "scrape|browse", example: "scrape" } };
   const { url, replicas } = body;
   // Dialects collapse to the canonical flat map here, before any specHash(): one method, one identity.
   const extract = normalizeExtract(body.extract);
@@ -152,7 +161,7 @@ export async function handleQuote(body, { retrieve, key, retrieval } = {}) {
   const prior = body.prior_receipt;
   let priorInfo = null;
   if (prior !== undefined) {
-    const bad = checkPrior(prior, key?.publicKey, methodFromRequest({ ...body, extract }, retrieval ?? "scrape"));
+    const bad = checkPrior(prior, key?.publicKey, methodFromRequest({ ...body, extract, retrieval: mode }, mode));
     if (bad) return { status: 422, json: { reason: bad } };
     priorInfo = prior;
   }
@@ -165,9 +174,10 @@ export async function handleQuote(body, { retrieve, key, retrieval } = {}) {
   if (typeof retrieve !== "function") return { status: 503, json: { reason: "retrieve_not_wired" } };
   let text;
   try {
-    const res = await retrieve(url);
+    const res = await retrieve(url, { retrieval: mode });
     text = typeof res === "string" ? res : res && res.text;
-  } catch {
+  } catch (e) {
+    if (e && e.message === "needs_browser") return { status: 422, json: { reason: "needs_browser" } };
     return { status: 422, json: { reason: "retrieve_failed" } };
   }
   if (!text) return { status: 422, json: { reason: "retrieve_empty" } };
@@ -203,17 +213,18 @@ export async function handleQuote(body, { retrieve, key, retrieval } = {}) {
   // must be readable and distinct from "the field is absent".
   const announced = verdict === null ? {} : { verdict, verdict_reason };
   if (verdict === "incomplete") announced.missing = classified.missing ?? [...missing];
-  const carry = { text, extract, values, missing, spans: filled.spans ?? {}, verdict, verdict_reason };
+  const carry = { text, extract, values, missing, spans: filled.spans ?? {}, verdict, verdict_reason, retrieval: mode };
+  const price_usdc = mode === "browse" ? BROWSE_PRICE_USDC : PRICE_USDC;
   if (priorInfo) {
     const source = sourceHash(text);
     return {
       status: 200,
-      json: { price_usdc: PRICE_USDC, replicas: replicas || 1, can_deliver: true, ...announced, changed: source !== priorInfo.source_hash, previous_source_hash: priorInfo.source_hash, source_hash: source },
+      json: { price_usdc, replicas: replicas || 1, can_deliver: true, retrieval: mode, ...announced, changed: source !== priorInfo.source_hash, previous_source_hash: priorInfo.source_hash, source_hash: source },
       ...carry,
       prior: priorInfo,
     };
   }
-  return { status: 200, json: { price_usdc: PRICE_USDC, replicas: replicas || 1, can_deliver: true, ...announced }, ...carry };
+  return { status: 200, json: { price_usdc, replicas: replicas || 1, can_deliver: true, retrieval: mode, ...announced }, ...carry };
 }
 
 /** Unpaid without deps.paid → 402. Signing only after explicit paid (x402 middleware or test).
@@ -222,14 +233,17 @@ export async function handleQuote(body, { retrieve, key, retrieval } = {}) {
 export async function handleWitness(body, deps = {}) {
   const q = deps.quoted && deps.quoted.status === 200 ? deps.quoted : await handleQuote(body, deps);
   if (q.status !== 200) return q;
+  const retrieval = q.retrieval ?? normalizeRetrieval(body?.retrieval) ?? "scrape";
   if (!deps.paid) {
+    const amount = retrieval === "browse" ? BROWSE_AMOUNT_ATOMIC : AMOUNT_ATOMIC;
+    const accepts = retrieval === "browse" ? browseWitnessAccepts(deps.paywall) : witnessAccepts(deps.paywall);
     return {
       status: 402,
       json: {
         x402Version: 2,
-        accepts: witnessAccepts(deps.paywall).length
-          ? witnessAccepts(deps.paywall)
-          : [{ scheme: "exact", network: SVM_NET, amount: AMOUNT_ATOMIC, asset: SVM_USDC, payTo: "<WITNESS_SOLANA>" }],
+        accepts: accepts.length
+          ? accepts
+          : [{ scheme: "exact", network: SVM_NET, amount, asset: SVM_USDC, payTo: "<WITNESS_SOLANA>" }],
       },
     };
   }
@@ -237,9 +251,10 @@ export async function handleWitness(body, deps = {}) {
   let text = q.text;
   if (text === undefined) {
     try {
-      const res = await deps.retrieve(body.url);
+      const res = await deps.retrieve(body.url, { retrieval });
       text = typeof res === "string" ? res : res && res.text;
-    } catch {
+    } catch (e) {
+      if (e && e.message === "needs_browser") return { status: 422, json: { reason: "needs_browser" } };
       return { status: 422, json: { reason: "retrieve_failed" } };
     }
     if (!text) return { status: 422, json: { reason: "retrieve_empty" } };
@@ -262,7 +277,7 @@ export async function handleWitness(body, deps = {}) {
     verdict_reason = verdict === null ? null : c.reason ?? null;
   }
   const observed_at = (deps.now ?? (() => new Date().toISOString()))();
-  const method = methodFromRequest({ ...body, extract: q.extract }, deps.retrieval ?? "scrape");
+  const method = methodFromRequest({ ...body, extract: q.extract, retrieval }, retrieval);
   const source_hash = sourceHash(text);
   const evidenceBundle = buildEvidenceBundle(text, q.extract, values, spans);
   const rest = {
@@ -422,6 +437,7 @@ export function createApp(deps = {}) {
           url: { type: "string" },
           extract: EXTRACT_SCHEMA,
           assertion: ASSERTION_SCHEMA,
+          retrieval: { type: "string", enum: ["scrape", "browse"] },
           replicas: { type: "integer", enum: [1] },
         },
         required: ["url", "extract"],
@@ -446,7 +462,11 @@ export function createApp(deps = {}) {
       return next();
     });
     const witnessMeta = { serviceName: "witness", tags: ["observation", "receipt", "x402", "empiricism"] };
-    app.post("/witness", limitQuoteProbes, deliverable, paymentMiddlewareWithBody({ "POST /witness": { resource: resourceUrl, accepts, mimeType: "application/json", description: "Independent fact + signed receipt. $0.01 USDC.", ...witnessMeta, extensions: bazaar } }, rs), paidWitness);
+    const scrapePaywall = paymentMiddlewareWithBody({ "POST /witness": { resource: resourceUrl, accepts, mimeType: "application/json", description: "Independent fact + signed receipt. $0.01 USDC.", ...witnessMeta, extensions: bazaar } }, rs);
+    const browsePaywall = paymentMiddlewareWithBody({ "POST /witness": { resource: resourceUrl, accepts: browseWitnessAccepts(deps.paywall), mimeType: "application/json", description: "Independent fact + signed receipt after an explicit browse retrieve. $0.06 USDC.", ...witnessMeta, extensions: bazaar } }, rs);
+    app.post("/witness", limitQuoteProbes, deliverable, (req, res, next) => {
+      return (req.quoted?.retrieval === "browse" ? browsePaywall : scrapePaywall)(req, res, next);
+    }, paidWitness);
     // Crawlable discovery: GET answers the same 402 challenge with zero retrieve.
     app.get("/witness", (req, res, next) => {
       if (req.headers["payment-signature"] || req.headers["x-payment"]) {
