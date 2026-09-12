@@ -255,7 +255,8 @@ test("matrix 1 (shape/400 never 402): POST /api/quotes — malformed bodies, wro
   await serve(app, async (base) => {
     const cases = [
       ["malformed JSON", 400, "bad_json", () => post(base, "/api/quotes", "{not json")],
-      ["JSON null", 400, "bad_offer_quote", () => post(base, "/api/quotes", "null")],
+      // express.json({strict:true}) refuses JSON primitives; null never reaches handleOfferQuote.
+      ["JSON null", 400, "bad_json", () => post(base, "/api/quotes", "null")],
       ["array body", 400, "bad_offer_quote", () => post(base, "/api/quotes", [1, 2])],
       ["empty object", 400, "bad_offer_quote", () => post(base, "/api/quotes", {})],
       ["missing offer_id", 400, "bad_offer_quote", () => post(base, "/api/quotes", { quantity: 1 })],
@@ -564,11 +565,10 @@ test("matrix 3 (settle-only-on-2xx): funnel — witness_signed_receipt only afte
     },
   });
   await serve(app, async (base) => {
-    const unpaid = await post(base, "/witness", WITNESS_BODY);
-    assert.equal(unpaid.status, 402);
-    assert.equal(facilitator.calls.settle, 0);
-
     const pay = await paymentFor(base, "/witness", WITNESS_BODY);
+    assert.equal(facilitator.calls.verify, 0);
+    assert.equal(facilitator.calls.settle, 0, "an unpaid challenge must not settle");
+
     const ok = await post(base, "/witness", WITNESS_BODY, pay);
     assert.equal(ok.status, 200);
     assert.ok(verifyReceipt(await ok.json(), key.publicKey), "the 200 is a real signed receipt");
