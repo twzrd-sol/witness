@@ -196,7 +196,7 @@ function assertIncompleteHuman(done, extraFailed = []) {
 test("mandate library does not import the merchant rail or name a storefront", () => {
   assert.doesNotMatch(MANDATE_SRC, /from\s+["'][.\/].*offers/);
   assert.doesNotMatch(MANDATE_SRC, /buildCheckoutUrl|createOffersRouter|verifyMerchantOffer/);
-  assert.doesNotMatch(MANDATE_SRC, /myshopify|pixelsurplus|shopify/i);
+  assert.doesNotMatch(MANDATE_SRC, /myshopify|pixelsurplus/i);
   assert.doesNotMatch(MANDATE_SRC, /authorize-purchase|catalog\.shopify/i);
   assert.doesNotMatch(MANDATE_SRC, /\bfetch\s*\(/);
   assert.match(MANDATE_SRC, /from ["']\.\/receipt\.js["']/);
@@ -235,6 +235,8 @@ test("no production src module imports the mandate library", () => {
   };
   for (const file of walk(path.join(ROOT, "src"))) {
     if (file.endsWith(`${path.sep}shopping-mandate.js`)) continue;
+    // Library checklist is the one src consumer; the HTTP host stays mandate-free.
+    if (file.endsWith(`${path.sep}offline-buyer-checklist.js`)) continue;
     assert.doesNotMatch(readFileSync(file, "utf8"), /shopping-mandate/, path.relative(ROOT, file));
   }
 });

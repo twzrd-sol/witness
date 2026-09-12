@@ -88,6 +88,23 @@ test("POST /quote SSRF does not retrieve", async () => {
   await new Promise((r) => server.close(r));
 });
 
+test("POST /witness deliverability probes share the quote rate limit", async () => {
+  const app = createApp({ key: generateProcessKey(), quoteRateLimit: 1, retrieve: async () => ({ text: FIXTURE }), funnelDir: null });
+  const server = app.listen(0, "127.0.0.1");
+  await new Promise((r) => server.once("listening", r));
+  try {
+    const request = () => fetch(`http://127.0.0.1:${server.address().port}/witness`, {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(BODY),
+    });
+    assert.equal((await request()).status, 402, "first unpaid probe is the paywall");
+    const limited = await request();
+    assert.equal(limited.status, 429);
+    assert.equal((await limited.json()).reason, "quote_rate_limited");
+  } finally {
+    await new Promise((r) => server.close(r));
+  }
+});
+
 test("POST /quote rate limits anonymous reader probes", async () => {
   const app = createApp({ key: generateProcessKey(), quoteRateLimit: 1, retrieve: async () => ({ text: FIXTURE }), funnelDir: null });
   const server = app.listen(0, "127.0.0.1");

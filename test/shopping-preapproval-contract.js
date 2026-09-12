@@ -72,10 +72,7 @@ export const QUOTE_200_GATE_FIELDS = Object.freeze([
 ]);
 
 /** Quote 200 fields runtime emits for GATE_METHOD that OpenAPI properties omit. */
-export const OPENAPI_OMITTED_QUOTE_FIELDS = Object.freeze([
-  "verdict",
-  "verdict_reason",
-]);
+export const OPENAPI_OMITTED_QUOTE_FIELDS = Object.freeze([]);
 
 /** Locked Done-child reason vocabulary. Adding/renaming one without this list fails. */
 export const DONE_CHILD_REASONS = Object.freeze([

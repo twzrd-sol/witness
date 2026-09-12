@@ -506,7 +506,7 @@ test("matrix 3 (settle-only-on-2xx): POST /api/quotes — host facilitator settl
   const { app, observationsDir } = host({
     facilitator,
     probeFetch: probe.fetch,
-    quoteRateLimit: 1,
+    quoteRateLimit: 2,
     gateTtlMs: 0,
   });
   await serve(app, async (base) => {

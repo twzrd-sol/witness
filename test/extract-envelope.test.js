@@ -25,8 +25,9 @@ test("unwrap passes through non-envelope bodies and fails closed on reader error
   for (const body of ["<html><p>price: 42</p></html>", "plain text, rank = 7", "[1,2,3]", "not json"])
     assert.equal(unwrapReader(body), body);
   assert.throws(() => unwrapReader(JSON.stringify({ ok: false, error: "blocked" })), /reader_not_ok/);
-  // An envelope with no usable content is the envelope itself, never an empty document.
-  assert.equal(unwrapReader(envelope("")), envelope(""));
+  // An ok envelope with blank content is a retrieval failure, never transport JSON as the page.
+  assert.throws(() => unwrapReader(envelope("")), /reader_empty/);
+  assert.throws(() => unwrapReader(envelope("   ")), /reader_empty/);
 });
 
 test("a quoted field beats a bare key= elsewhere in the document", () => {

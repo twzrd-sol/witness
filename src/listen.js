@@ -151,10 +151,16 @@ from. coverage_limited is an answer about the corpus, not a contradiction.
 Key: GET /pubkey · Payment: GET /.well-known/x402 · Methods: GET /llms.txt
 `;
 
+export const READER_HOST = "reader.outbid.sh";
+/** Scrape is $0.005. Bound before sign — the SDK default is $1. */
+export const READER_MAX_AMOUNT_PER_PAYMENT = "$0.005";
+
 /**
  * Paying fetch for reader.outbid.sh/scrape (Base x402, $0.005): only when
  * X402_READER_PAYMENTS_ENABLED=1 AND a valid wallet key is set. Anything
  * else returns {} — the reader stays on the unpaid path, which fails closed.
+ * The wrapper is host-pinned and spend-capped so a 402 from anywhere else,
+ * or above scrape price, cannot be signed.
  */
 export function readerPayment(env, readerFetch) {
   if (env.X402_READER_PAYMENTS_ENABLED !== "1") return {};
@@ -163,8 +169,18 @@ export function readerPayment(env, readerFetch) {
     console.error("witness: X402_READER_PAYMENTS_ENABLED=1 but X402_READER_WALLET_KEY missing/invalid — reader stays unpaid");
     return {};
   }
-  const client = new x402Client().register("eip155:8453", new ExactEvmScheme(privateKeyToAccount(key)));
-  return { paymentsEnabled: true, payFetch: wrapFetchWithPayment(readerFetch ?? globalThis.fetch, client) };
+  const client = new x402Client()
+    .register("eip155:8453", new ExactEvmScheme(privateKeyToAccount(key)))
+    .setSpendControls({ maxAmountPerPayment: READER_MAX_AMOUNT_PER_PAYMENT });
+  const inner = wrapFetchWithPayment(readerFetch ?? globalThis.fetch, client);
+  const payFetch = async (input, init) => {
+    const raw = typeof input === "string" || input instanceof URL ? String(input) : input && input.url;
+    let host;
+    try { host = new URL(raw).hostname; } catch { throw new Error("reader_host_refused"); }
+    if (host !== READER_HOST) throw new Error("reader_host_refused");
+    return inner(input, init);
+  };
+  return { paymentsEnabled: true, payFetch, maxAmountPerPayment: READER_MAX_AMOUNT_PER_PAYMENT };
 }
 
 export function createHostApp(env = process.env, { readerFetch, probeFetch, gateTtlMs, attest, importModel, intelFetch } = {}) {

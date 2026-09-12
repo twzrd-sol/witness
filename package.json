@@ -4,9 +4,14 @@
   "type": "module",
   "scripts": {
     "test": "node --test test/*.test.js",
-    "start": "node --env-file-if-exists=.env src/listen.js"
+    "start": "node --env-file-if-exists=.env src/listen.js",
+    "mcp": "node src/mcp.js"
+  },
+  "bin": {
+    "witness-mcp": "src/mcp.js"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "@x402/core": "^2.23.0",
     "@x402/evm": "^2.23.0",
     "@x402/express": "^2.23.0",
@@ -14,7 +19,8 @@
     "@x402/fetch": "^2.23.0",
     "@x402/svm": "^2.23.0",
     "express": "^5.2.1",
-    "viem": "^2.56.3"
+    "viem": "^2.56.3",
+    "zod": "^4.6.1"
   },
   "devDependencies": {
     "ajv": "^8.20.0"

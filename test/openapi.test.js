@@ -14,7 +14,18 @@ test("openapi contract: quote free, witness quote-first paid x402, canonical ori
   const q = doc.paths["/quote"].post;
   assert.deepEqual(Object.keys(q.responses).sort(), ["200", "400", "422", "429"]);
   assert.match(q.description, /Never bills/);
+  const q200 = q.responses["200"].content["application/json"].schema.properties;
+  assert.deepEqual(q200.verdict.enum, ["supported", "contradicted", "incomplete"]);
+  assert.ok(q200.verdict_reason);
+  assert.equal(q200.missing.type, "array");
   assert.deepEqual(q.security, [], "quote is explicitly public — free, no auth requirement");
+
+  const s = doc.paths["/seller/offer/validate"].post;
+  assert.deepEqual(s.security, [], "seller validation is explicitly public");
+  assert.deepEqual(Object.keys(s.responses).sort(), ["200", "400"]);
+  assert.match(s.description, /seller_card/i);
+  assert.equal(s.requestBody.content["application/json"].schema.properties.offer.properties.currency.const, "USDC");
+  assert.equal(s.responses["200"].content["application/json"].schema.properties.data.properties.seller_card.properties.payout_wallet.type, "string");
 
   const w = doc.paths["/witness"].post;
   assert.equal(w["x-payment"].price_usdc, "0.01");
@@ -68,7 +79,8 @@ test("GET /openapi.json serves the doc on the host surface", async () => {
     assert.equal(res.status, 200);
     const served = await res.json();
     assert.equal(served.servers[0].url, "https://witness.outbid.sh", "canonical origin even without env");
-    assert.deepEqual(Object.keys(served.paths).sort(), ["/.well-known/agent.json", "/.well-known/x402", "/api/offers", "/api/offers/{id}", "/api/offers/{id}/task.json", "/api/quotes", "/delivery/attest", "/llms.txt", "/observatory", "/offers/{id}", "/openapi.json", "/pubkey", "/quote", "/skill.md", "/verify/payout", "/verify/payout/quote", "/witness"]);
+    assert.deepEqual(Object.keys(served.paths).sort(), ["/.well-known/agent.json", "/.well-known/x402", "/api/offers", "/api/offers/{id}", "/api/offers/{id}/task.json", "/api/quotes", "/bounties", "/bounties/{id}", "/bounties/{id}/claim", "/bounties/{id}/complete", "/delivery/attest", "/llms.txt", "/observatory", "/offers/{id}", "/openapi.json", "/pubkey", "/quote", "/seller/offer/validate", "/skill.md", "/verify/payout", "/verify/payout/quote", "/witness"]);
+    assert.ok(served.paths["/seller/offer/validate"], "seller validation route is documented on the host surface");
     assert.ok(served.paths["/api/quotes"].post, "quote/checkout endpoint is documented on the host surface");
     assert.deepEqual(served.paths["/api/quotes"].post.security, [], "quote/checkout endpoint is explicitly public");
     assert.ok(served.paths["/offers/{id}"].get, "offer page is documented on the host surface");

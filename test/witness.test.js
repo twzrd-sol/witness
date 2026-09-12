@@ -124,7 +124,8 @@ test("with no claim, an extract miss still never reaches the paywall", async () 
 test("POST /witness unpaid 402 after a deliverable quote", async () => {
   const out = await handleWitness(BODY, { retrieve: async () => ({ text: FIXTURE }) });
   assert.equal(out.status, 402);
-  assert.equal(out.json.accepts[0].maxAmountRequired, "10000");
+  assert.equal(out.json.x402Version, 2);
+  assert.equal(out.json.accepts[0].amount ?? out.json.accepts[0].maxAmountRequired, "10000");
 });
 
 test("GET /pubkey", async () => {
@@ -335,6 +336,31 @@ test("no paywall: forged payment-signature must not mint a receipt or append", a
   assert.notEqual(res.status, 200);
   assert.ok(res.status === 503 || res.status === 402 || res.status === 422);
   assert.equal(readObservations(dir).length, 0);
+});
+
+test("paywall wired: payment headers do not skip deliverability — 422 never settles", async () => {
+  let verify = 0, settle = 0;
+  const facilitator = {
+    async getSupported() { return fakeFacilitator.getSupported(); },
+    async verify() { verify++; throw new Error("verify must not run on a non-deliverable body"); },
+    async settle() { settle++; throw new Error("settle must not run on a non-deliverable body"); },
+  };
+  const app = createApp({
+    key: generateProcessKey(),
+    retrieve: async () => ({ text: "<p>hi</p>" }),
+    funnelDir: null,
+    facilitator,
+    paywall: { evmAddress: "0xabc0000000000000000000000000000000000001", svmAddress: "F1AbWuXJcBT9arW9wc6Xr2vom5NBtngWsz6Ht16jRBLM" },
+  });
+  for (const header of [{ "x-payment": "bogus" }, { "payment-signature": "bogus" }]) {
+    verify = 0;
+    settle = 0;
+    const res = await postWitness(app, header);
+    assert.equal(res.status, 422, `${Object.keys(header)[0]} must 422 before the facilitator`);
+    assert.equal((await res.json()).reason, "extract_none");
+    assert.equal(verify, 0, "facilitator.verify must not run");
+    assert.equal(settle, 0, "facilitator.settle must not run");
+  }
 });
 
 test("paywall wired: unpaid deliverable still returns the x402 402 challenge", async () => {

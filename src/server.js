@@ -10,6 +10,8 @@ import { funnelOutcome, funnelReason, funnelSpecHash, funnelVerdict, recordFunne
 import { createOffersRouter } from "./routes/offers.js";
 import { createDeliveryRouter } from "./routes/delivery.js";
 import { createPayoutClaimRouter } from "./routes/payout-claim.js";
+import { createSellerRouter } from "./routes/seller.js";
+import { createBountiesRouter } from "./routes/bounties.js";
 import { paymentMiddleware } from "@x402/express";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { x402ResourceServer, HTTPFacilitatorClient } from "@x402/core/server";
@@ -214,18 +216,20 @@ export async function handleQuote(body, { retrieve, key, retrieval } = {}) {
   return { status: 200, json: { price_usdc: PRICE_USDC, replicas: replicas || 1, can_deliver: true, ...announced }, ...carry };
 }
 
-/** Unpaid without deps.paid → 402. Signing only after explicit paid (x402 middleware or test). */
+/** Unpaid without deps.paid → 402. Signing only after explicit paid (x402 middleware or test).
+ *  `deps.quoted` is the in-process deliverability result from this request —
+ *  never a client-supplied body. Reusing it keeps one retrieve per HTTP call. */
 export async function handleWitness(body, deps = {}) {
-  const q = await handleQuote(body, deps);
+  const q = deps.quoted && deps.quoted.status === 200 ? deps.quoted : await handleQuote(body, deps);
   if (q.status !== 200) return q;
   if (!deps.paid) {
     return {
       status: 402,
       json: {
-        x402Version: 1,
+        x402Version: 2,
         accepts: witnessAccepts(deps.paywall).length
           ? witnessAccepts(deps.paywall)
-          : [{ scheme: "exact", network: SVM_NET, maxAmountRequired: AMOUNT_ATOMIC, asset: SVM_USDC, payTo: "<WITNESS_SOLANA>" }],
+          : [{ scheme: "exact", network: SVM_NET, amount: AMOUNT_ATOMIC, asset: SVM_USDC, payTo: "<WITNESS_SOLANA>" }],
       },
     };
   }
@@ -376,8 +380,18 @@ export function createApp(deps = {}) {
   // errors (bad_json / body_too_large in its own envelope). The evidence model (src/delivery.js)
   // is resolved lazily inside the router; deps.attest overrides it for tests and embedders.
   app.use(createDeliveryRouter({ key, attest: deps.attest, importModel: deps.importModel, now: deps.now, verifier: deps.verifier ?? new URL(publicBase).host, maxStalenessSeconds: deps.maxStalenessSeconds, attestAllowed, paywall: attestPaywall }));
-  app.use(express.json({ limit: "64kb" }));
+  app.use((req, res, next) => {
+    express.json({ limit: "64kb", strict: !req.path.startsWith("/seller/") })(req, res, next);
+  });
   const reply = (res, out) => res.status(out.status).json(out.json);
+  // Seller card surface: pure validation + card over the request body (no
+  // registry, no persistence, never billed). Standalone router so the
+  // contract lives in one module; mounted here on the existing app.
+  app.use(createSellerRouter());
+  // Bounty coordination pilot (operator override 2026-09-10): API-only
+  // post/claim/complete. No money movement, no token — settlement is
+  // out of band; the board records offers and explicit outcome rows.
+  app.use(createBountiesRouter({ storeDir: deps.bountiesDir ?? wired.observationsDir }));
   // Consumer offers: catalog, cart, and a gated checkout handoff. The gate
   // reuses handleQuote (free path) and the /quote per-IP limiter.
   app.use(createOffersRouter({ ...wired, handleQuote, quoteAllowed, probeFetch: deps.probeFetch, gateTtlMs: deps.gateTtlMs }));
@@ -385,14 +399,17 @@ export function createApp(deps = {}) {
   // process dies on the unhandled rejection. Route every rejection to the 500 handler.
   const guard = (fn) => (req, res, next) => fn(req, res, next).catch(next);
   const witness = guard(async (req, res) => reply(res, await handleWitness(req.body, { ...wired, paid: false })));
-  const paidWitness = guard(async (req, res) => reply(res, await handleWitness(req.body, { ...wired, paid: true })));
+  const paidWitness = guard(async (req, res) => reply(res, await handleWitness(req.body, { ...wired, paid: true, quoted: req.quoted })));
+  const limitQuoteProbes = (req, res, next) => {
+    if (!quoteAllowed(req.ip)) return reply(res, { status: 429, json: { reason: "quote_rate_limited" } });
+    next();
+  };
   app.get("/pubkey", (_req, res) => res.json({ pubkey: pubkeyB64(key) }));
   app.get("/observatory", (_req, res) => {
     const now = (wired.now ?? (() => new Date().toISOString()))();
     res.type("html").send(renderStarMap(compareReceipts(readObservations(wired.observationsDir), key.publicKey, now), now));
   });
-  app.post("/quote", guard(async (req, res) => {
-    if (!quoteAllowed(req.ip)) return reply(res, { status: 429, json: { reason: "quote_rate_limited" } });
+  app.post("/quote", limitQuoteProbes, guard(async (req, res) => {
     return reply(res, await handleQuote(req.body, wired));
   }));
   if (accepts.length) {
@@ -418,16 +435,18 @@ export function createApp(deps = {}) {
         },
       },
     });
-    // Deliverability-first: an unpaid probe runs the quote; only a deliverable
-    // request reaches the paywall. A 422 never sees a 402, matching the reader.
+    // Deliverability-first: every POST, including ones that already carry a
+    // payment header, runs the quote before the facilitator. A 422 never
+    // settles. The successful quote is reused so the paid handler does not
+    // scrape (or pay the reader) a second time on this request.
     const deliverable = guard(async (req, res, next) => {
-      if (req.headers["payment-signature"] || req.headers["x-payment"]) return next();
       const out = await handleQuote(req.body, wired);
-      if (out.status === 200) return next();
-      return reply(res, out);
+      if (out.status !== 200) return reply(res, out);
+      req.quoted = out;
+      return next();
     });
     const witnessMeta = { serviceName: "witness", tags: ["observation", "receipt", "x402", "empiricism"] };
-    app.post("/witness", deliverable, paymentMiddlewareWithBody({ "POST /witness": { resource: resourceUrl, accepts, mimeType: "application/json", description: "Independent fact + signed receipt. $0.01 USDC.", ...witnessMeta, extensions: bazaar } }, rs), paidWitness);
+    app.post("/witness", limitQuoteProbes, deliverable, paymentMiddlewareWithBody({ "POST /witness": { resource: resourceUrl, accepts, mimeType: "application/json", description: "Independent fact + signed receipt. $0.01 USDC.", ...witnessMeta, extensions: bazaar } }, rs), paidWitness);
     // Crawlable discovery: GET answers the same 402 challenge with zero retrieve.
     app.get("/witness", (req, res, next) => {
       if (req.headers["payment-signature"] || req.headers["x-payment"]) {
@@ -436,12 +455,18 @@ export function createApp(deps = {}) {
       next();
     }, paymentMiddlewareWithBody({ "GET /witness": { resource: resourceUrl, accepts, mimeType: "application/json", description: "Discovery challenge — the paid deliverable is POST /witness.", ...witnessMeta } }, rs));
   } else {
-    app.post("/witness", witness);
+    app.post("/witness", limitQuoteProbes, witness);
   }
   // Payout-claim verification rides the same paywall and key at its own price.
   app.use(createPayoutClaimRouter(wired, { accepts: railAccepts("$0.05", deps.paywall), paymentMiddlewareWithBody, resourceServer: rs, publicBaseUrl: deps.publicBaseUrl, funnelDir, quoteRateLimit: deps.payoutQuoteRateLimit }));
   app.use((err, _req, res, next) => {
     if (err && (err.type === "entity.parse.failed" || (err instanceof SyntaxError && err.status === 400 && "body" in err))) {
+      if (_req && typeof _req.path === "string" && _req.path.startsWith("/seller/")) {
+        return res.status(400).json({ success: false, error: { reason: "bad_json", details: [{ field: "offer", reason: "object_required" }] }, data: null });
+      }
+      if (_req && typeof _req.path === "string" && _req.path.startsWith("/bounties")) {
+        return res.status(400).json({ success: false, error: { reason: "bad_json", details: [{ field: "body", reason: "object_required" }] }, data: null });
+      }
       return res.status(400).json({ reason: "bad_json" });
     }
     next(err);

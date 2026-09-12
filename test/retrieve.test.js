@@ -8,6 +8,48 @@ import { createHostApp } from "../src/listen.js";
 
 const ok = (text) => async () => ({ ok: true, status: 200, text: async () => text });
 
+test("reader fetch does not follow redirects off the reader host", async () => {
+  let init;
+  const fetch = async (_url, opts) => {
+    init = opts;
+    return { ok: true, status: 200, text: async () => "hello" };
+  };
+  assert.equal(await makeRetrieve({ fetch })("https://example.com/top"), "hello");
+  assert.equal(init.redirect, "manual", "a 302 from the reader must not hop the paying fetch onto another host");
+});
+
+test("makeRetrieve unwraps a reader envelope and never hashes the transport JSON", async () => {
+  const doc = '{"title":"delectus aut autem","rank":1}';
+  const retrieve = makeRetrieve({
+    fetch: async () => ({ ok: true, status: 200, text: async () => JSON.stringify({ ok: true, title: "", content: doc }) }),
+  });
+  assert.equal(await retrieve("https://example.com/top"), doc);
+  await assert.rejects(
+    makeRetrieve({ fetch: async () => ({ ok: true, status: 200, text: async () => JSON.stringify({ ok: true, title: "", content: "" }) }) })("https://example.com/top"),
+    /reader_empty/,
+  );
+});
+
+test("host quote extracts from a reader envelope, not the transport wrapper", async () => {
+  const readerFetch = async () => ({
+    ok: true,
+    status: 200,
+    text: async () => JSON.stringify({ ok: true, title: "", content: "rank: 1\n" }),
+  });
+  const server = createHostApp({ OBSERVATIONS_DIR: mkdtempSync(path.join(os.tmpdir(), "wit-env-")) }, { readerFetch }).listen(0, "127.0.0.1");
+  await new Promise((r) => server.once("listening", r));
+  try {
+    const res = await fetch(`http://127.0.0.1:${server.address().port}/quote`, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ url: "https://example.com/top", extract: { rank: "number" } }),
+    });
+    assert.equal(res.status, 200);
+    assert.equal((await res.json()).can_deliver, true);
+  } finally {
+    await new Promise((r) => server.close(r));
+  }
+});
+
 test("reader adapter is fail-closed: refuse, error, non-200, empty all throw", async () => {
   await assert.rejects(makeRetrieve({ fetch: async () => { throw new Error("reader down"); } })("https://example.com"), /reader down/);
   await assert.rejects(makeRetrieve({ fetch: async () => ({ ok: false, status: 502, text: async () => "" }) })("https://example.com"), /reader_502/);

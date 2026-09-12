@@ -3,11 +3,187 @@ import { EXTRACT_SCHEMA } from "./extract.js";
 import { ASSERTION_SCHEMA, railAccepts, witnessAccepts } from "./server.js";
 import { DELIVERY_VERDICTS, EXAMPLE_BODY as DELIVERY_EXAMPLE, MAX_BODY as DELIVERY_MAX_BODY, MODES, SPEC_TYPES } from "./routes/delivery.js";
 import { PAYOUT_QUOTE_ROUTE, PAYOUT_ROUTE } from "./routes/payout-claim.js";
+import { SELLER_OFFER_SCHEMA_VERSION } from "./seller.js";
+
+const sellerOfferSchema = {
+  type: "object",
+  required: ["schema_version", "seller_id", "capability", "price_minor", "currency", "network", "payout_wallet", "sla_minutes", "deliverable"],
+  properties: {
+    schema_version: { const: SELLER_OFFER_SCHEMA_VERSION },
+    seller_id: { type: "string" },
+    capability: { type: "string" },
+    price_minor: { type: "integer", minimum: 1 },
+    currency: { const: "USDC" },
+    network: { enum: ["base", "solana"] },
+    payout_wallet: { type: "string" },
+    sla_minutes: { type: "integer", minimum: 1 },
+    deliverable: {
+      type: "object",
+      required: ["description", "mime_type"],
+      properties: {
+        description: { type: "string" },
+        mime_type: { type: "string" },
+      },
+    },
+    evidence_url: { type: "string", format: "uri" },
+    outcomes: { type: "array", items: { type: "object" } },
+  },
+};
+
+const sellerCardSchema = {
+  type: "object",
+  required: ["schema_version", "seller_id", "payout_wallet", "capability", "price_usdc", "currency", "network", "sla_minutes", "deliverable", "outcomes", "evidence_url", "evidence_status"],
+  properties: {
+    schema_version: { const: "seller-card/v1" },
+    seller_id: { type: "string" },
+    payout_wallet: { type: "string" },
+    capability: { type: "string" },
+    price_usdc: { type: "string" },
+    currency: { const: "USDC" },
+    network: { enum: ["base", "solana"] },
+    sla_minutes: { type: "integer" },
+    deliverable: sellerOfferSchema.properties.deliverable,
+    outcomes: {
+      type: "object",
+      required: ["completed_jobs", "accepted_jobs", "approval_rate", "refunded_jobs", "refund_rate", "median_delivery_minutes"],
+      properties: {
+        completed_jobs: { type: "integer" },
+        accepted_jobs: { type: "integer" },
+        approval_rate: { type: ["number", "null"] },
+        refunded_jobs: { type: "integer" },
+        refund_rate: { type: ["number", "null"] },
+        median_delivery_minutes: { type: ["number", "null"] },
+      },
+    },
+    evidence_url: { type: ["string", "null"], format: "uri" },
+    evidence_status: { type: "string" },
+  },
+};
+
+const sellerValidationRequest = {
+  type: "object",
+  properties: {
+    offer: sellerOfferSchema,
+    outcomes: { type: "array", items: { type: "object" } },
+  },
+  additionalProperties: true,
+};
+
+const sellerValidationResponse = {
+  type: "object",
+  required: ["success", "data"],
+  properties: {
+    success: { const: true },
+    data: {
+      type: "object",
+      required: ["seller_card"],
+      properties: { seller_card: sellerCardSchema },
+    },
+    request_metadata: {
+      type: "object",
+      properties: {
+        received_at: { type: "string", format: "date-time" },
+        seller_id: { type: ["string", "null"] },
+        has_wrapped_offer: { type: "boolean" },
+        outcome_count: { type: "integer" },
+      },
+    },
+  },
+};
+
+const sellerValidationError = {
+  type: "object",
+  required: ["success", "error", "data"],
+  properties: {
+    success: { const: false },
+    data: { const: null },
+    error: {
+      type: "object",
+      required: ["reason", "details"],
+      properties: {
+        reason: { enum: ["bad_json", "bad_seller_offer", "bad_outcomes"] },
+        details: { type: "array", items: { type: "object" } },
+      },
+    },
+    request_metadata: { type: "object" },
+  },
+};
+
+const bountyRecordSchema = {
+  type: "object",
+  required: ["id", "status", "task", "poster_card", "claim", "outcome", "created_at", "updated_at"],
+  properties: {
+    id: { type: "string" },
+    status: { enum: ["open", "claimed", "complete"] },
+    task: { type: "object", required: ["description"], properties: { description: { type: "string" } } },
+    poster_card: sellerCardSchema,
+    claim: { type: ["object", "null"], description: "Null until claimed; then {claimer_card, claimed_at}." },
+    outcome: { type: ["object", "null"], description: "Null until completed; then {decision: accepted|rejected, delivery_minutes, completed_at}." },
+    created_at: { type: "string", format: "date-time" },
+    updated_at: { type: "string", format: "date-time" },
+  },
+};
+
+const postBountyRequest = {
+  type: "object",
+  required: ["poster", "task"],
+  properties: {
+    poster: sellerOfferSchema,
+    task: { type: "object", required: ["description"], properties: { description: { type: "string" } } },
+  },
+};
+
+const claimBountyRequest = {
+  type: "object",
+  required: ["claimer"],
+  properties: { claimer: sellerOfferSchema },
+};
+
+const completeBountyRequest = {
+  type: "object",
+  required: ["outcome"],
+  properties: {
+    outcome: {
+      type: "object",
+      required: ["decision"],
+      properties: {
+        decision: { enum: ["accepted", "rejected"] },
+        delivery_minutes: { type: "number", minimum: 0 },
+      },
+    },
+  },
+};
 
 const body = (schema, example) => ({ required: true, content: { "application/json": { schema, ...(example ? { example } : {}) } } });
 const out = (description, schema = {}) => ({ description, content: { "application/json": { schema } } });
 const textOut = (description, type) => ({ description, content: { [type]: { schema: { type: "string" } } } });
 const pub = (summary, response) => ({ get: { summary, security: [], responses: { "200": response } } });
+
+const bountyOk = out("Bounty record", {
+  type: "object",
+  required: ["success", "data"],
+  properties: {
+    success: { const: true },
+    data: { type: "object", required: ["bounty"], properties: { bounty: bountyRecordSchema } },
+  },
+});
+
+const bountyErr = (reasons) => out("Bounty request failed — nothing moves, nothing bills, ever.", {
+  type: "object",
+  required: ["success", "error", "data"],
+  properties: {
+    success: { const: false },
+    data: { const: null },
+    error: {
+      type: "object",
+      required: ["reason", "details"],
+      properties: {
+        reason: { enum: reasons },
+        details: { type: "array", items: { type: "object" } },
+      },
+    },
+  },
+});
 
 const quoteRequest = {
   type: "object",
@@ -258,10 +434,22 @@ export function openapiDoc(env = process.env) {
           security: [],
           requestBody: body(quoteRequest, EXAMPLE),
           responses: {
-            "200": out("Deliverable now", { type: "object", properties: { price_usdc: { const: "0.01" }, replicas: { type: "integer" }, can_deliver: { const: true }, changed: { type: "boolean", description: "Change Proof — present only when prior_receipt was attached: retrieved bytes differ from the prior source_hash." }, previous_source_hash: { type: "string", description: "Change Proof — the prior receipt source_hash; present only with prior_receipt." }, source_hash: { type: "string", description: "Change Proof — sha256 of this retrieve; present only with prior_receipt." } } }),
+            "200": out("Deliverable now", { type: "object", properties: { price_usdc: { const: "0.01" }, replicas: { type: "integer" }, can_deliver: { const: true }, verdict: { type: "string", enum: ["supported", "contradicted", "incomplete"], description: "Present when the request stated an assertion: the verdict the paid receipt will be signed with." }, verdict_reason: { type: ["string", "null"], description: "Present with verdict. null when the claim holds." }, missing: { type: "array", items: { type: "string" }, description: "Present when verdict is incomplete: extract keys the source did not carry." }, changed: { type: "boolean", description: "Change Proof — present only when prior_receipt was attached: retrieved bytes differ from the prior source_hash." }, previous_source_hash: { type: "string", description: "Change Proof — the prior receipt source_hash; present only with prior_receipt." }, source_hash: { type: "string", description: "Change Proof — sha256 of this retrieve; present only with prior_receipt." } } }),
             "400": badRequest,
             "422": out("Could not be checked — nothing billed, ever. ssrf refusal, retrieve failure, empty page, a malformed assertion, an assertion naming a field the extract did not request, a document where none of the requested fields resolved, or (with no assertion stated) missing extract fields. A claim that simply does not hold is a 200 with verdict contradicted, not a 422."),
             "429": out("Quote probe rate limit exceeded — nothing billed. Per client (QUOTE_RATE_LIMIT_PER_MINUTE, default 30) and across all clients (QUOTE_RATE_LIMIT_GLOBAL_PER_MINUTE, default 60), because every probe can cost the operator a paid reader call."),
+          },
+        },
+      },
+      "/seller/offer/validate": {
+        post: {
+          summary: "Validate a seller offer and return a seller card",
+          description: "Public seller-side contract: validate the offer payload, then return a seller_card wrapper with evidence-backed metadata. 400 returns structured validation errors for bad seller offers or malformed outcomes. No payment, no checkout, no trust claim from missing history.",
+          security: [],
+          requestBody: body(sellerValidationRequest),
+          responses: {
+            "200": out("Validated seller card", sellerValidationResponse),
+            "400": out("Validation failed", sellerValidationError),
           },
         },
       },
@@ -319,6 +507,57 @@ export function openapiDoc(env = process.env) {
             "409": out("Gate withheld: live source contradicts the catalog or could not be verified", { type: "object" }),
             "429": out("Gate rate limited (shares the POST /quote per-IP limiter)", { type: "object" }),
             "503": out("Gate not wired (no retrieve/probe configured)", { type: "object" }),
+          },
+        },
+      },
+      "/bounties": {
+        post: {
+          summary: "Post a bounty with a validated poster offer",
+          description: "Coordination pilot (operator override 2026-09-10): records the poster card and task. No money movement, no token, no checkout — settlement is out of band. 400 carries structured validation details.",
+          security: [],
+          requestBody: body(postBountyRequest),
+          responses: {
+            "200": bountyOk,
+            "400": bountyErr(["bad_poster_offer", "bad_task"]),
+          },
+        },
+      },
+      "/bounties/{id}": {
+        get: {
+          summary: "Read a bounty record",
+          description: "Public read of one bounty: status, poster card, claim, and explicit outcome rows. No payment, never billed.",
+          security: [],
+          responses: {
+            "200": bountyOk,
+            "404": bountyErr(["bounty_not_found"]),
+          },
+        },
+      },
+      "/bounties/{id}/claim": {
+        post: {
+          summary: "Claim an open bounty with a validated claimer offer",
+          description: "One active claim per bounty: claiming a non-open bounty is 409 and changes nothing. Self-claim is refused. 400 carries structured validation details for the claimer offer.",
+          security: [],
+          requestBody: body(claimBountyRequest),
+          responses: {
+            "200": bountyOk,
+            "400": bountyErr(["bad_claimer_offer"]),
+            "404": bountyErr(["bounty_not_found"]),
+            "409": bountyErr(["bounty_not_open", "self_claim_refused"]),
+          },
+        },
+      },
+      "/bounties/{id}/complete": {
+        post: {
+          summary: "Complete a claimed bounty with an explicit outcome row",
+          description: "Records {decision: accepted|rejected, delivery_minutes} — the explicit rows future seller cards are built from. Only a claimed bounty can complete. No money movement.",
+          security: [],
+          requestBody: body(completeBountyRequest),
+          responses: {
+            "200": bountyOk,
+            "400": bountyErr(["bad_outcome"]),
+            "404": bountyErr(["bounty_not_found"]),
+            "409": bountyErr(["bounty_not_claimed"]),
           },
         },
       },

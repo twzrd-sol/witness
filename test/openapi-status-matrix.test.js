@@ -25,6 +25,7 @@ import { createApp } from "../src/server.js";
 import { listenExclusive } from "../src/listen.js";
 import { generateProcessKey } from "../src/receipt.js";
 import { EXAMPLE_BODY } from "../src/routes/delivery.js";
+import { SELLER_OFFER_SCHEMA_VERSION } from "../src/seller.js";
 import { IntelUnavailable } from "../src/intel-evidence.js";
 import {
   CONTRACT_STATUSES,
@@ -44,6 +45,19 @@ const WITNESS_BODY = {
   extract: { starter_price: "number", currency: "string" },
 };
 const MERCHANT_ID = "pixel-surplus-vintage-polaroid";
+const SELLER_OFFER = {
+  schema_version: SELLER_OFFER_SCHEMA_VERSION,
+  seller_id: "agent:poster-1",
+  capability: "cited research pack",
+  price_minor: 10000,
+  currency: "USDC",
+  network: "base",
+  payout_wallet: "0xabc0000000000000000000000000000000000001",
+  sla_minutes: 60,
+  deliverable: { description: "Markdown report with source links", mime_type: "text/markdown" },
+};
+const CLAIMER_OFFER = { ...SELLER_OFFER, seller_id: "agent:hunter-7", payout_wallet: "0xdef0000000000000000000000000000000000002" };
+const BOUNTY_TASK = { description: "Confirm the starter price on https://example.com/pricing" };
 const X402_ID = "outbid-reader-scrape";
 const productDoc = (price) =>
   JSON.stringify({ price, handle: "vintage-polaroid-photo-frames" });
@@ -192,6 +206,16 @@ function jsonBody(body) {
   return typeof body === "string" ? body : JSON.stringify(body);
 }
 
+async function postBounty(base, poster = SELLER_OFFER) {
+  const res = await fetch(`${base}/bounties`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: jsonBody({ poster, task: BOUNTY_TASK }),
+  });
+  const json = await res.json();
+  return json.data.bounty.id;
+}
+
 function challengeOf(res) {
   const raw = res.headers.get("payment-required");
   assert.ok(raw, `${res.status} without a PAYMENT-REQUIRED header is not an x402 challenge`);
@@ -288,6 +312,30 @@ const STIMULI = [
   // extras: related runtime reasons on documented statuses (not required by OpenAPI names)
   { id: "api.quotes.400.bad_quantity", path: "/api/quotes", method: "POST", status: 400, reason: "bad_quantity", host: "free", body: { offer_id: MERCHANT_ID, quantity: 0 } },
   { id: "api.quotes.400.bad_input_url", path: "/api/quotes", method: "POST", status: 400, reason: "bad_input_url", host: "free", body: { offer_id: X402_ID, input: { url: "ftp://x" } } },
+
+  // --- seller / bounties (wrapper envelope; reasons live under error.reason) ---
+  { id: "seller.validate.400", path: "/seller/offer/validate", method: "POST", status: 400, host: "free", body: { offer: { ...SELLER_OFFER, currency: "VIRTUAL" } } },
+  { id: "bounties.post.400", path: "/bounties", method: "POST", status: 400, host: "free", body: { poster: { ...SELLER_OFFER, currency: "VIRTUAL" }, task: BOUNTY_TASK } },
+  { id: "bounties.get.404", path: "/bounties/{id}", url: "/bounties/does-not-exist", method: "GET", status: 404, host: "free" },
+  { id: "bounties.claim.400", path: "/bounties/{id}/claim", method: "POST", status: 400, host: "free", async run(base) {
+    const id = await postBounty(base);
+    return fetch(`${base}/bounties/${id}/claim`, { method: "POST", headers: { "content-type": "application/json" }, body: jsonBody({ claimer: { ...CLAIMER_OFFER, currency: "VIRTUAL" } }) });
+  } },
+  { id: "bounties.claim.404", path: "/bounties/{id}/claim", url: "/bounties/does-not-exist/claim", method: "POST", status: 404, host: "free", body: { claimer: CLAIMER_OFFER } },
+  { id: "bounties.claim.409", path: "/bounties/{id}/claim", method: "POST", status: 409, host: "free", async run(base) {
+    const id = await postBounty(base);
+    return fetch(`${base}/bounties/${id}/claim`, { method: "POST", headers: { "content-type": "application/json" }, body: jsonBody({ claimer: SELLER_OFFER }) });
+  } },
+  { id: "bounties.complete.400", path: "/bounties/{id}/complete", method: "POST", status: 400, host: "free", async run(base) {
+    const id = await postBounty(base);
+    await fetch(`${base}/bounties/${id}/claim`, { method: "POST", headers: { "content-type": "application/json" }, body: jsonBody({ claimer: CLAIMER_OFFER }) });
+    return fetch(`${base}/bounties/${id}/complete`, { method: "POST", headers: { "content-type": "application/json" }, body: jsonBody({ outcome: { decision: "maybe" } }) });
+  } },
+  { id: "bounties.complete.404", path: "/bounties/{id}/complete", url: "/bounties/does-not-exist/complete", method: "POST", status: 404, host: "free", body: { outcome: { decision: "accepted" } } },
+  { id: "bounties.complete.409", path: "/bounties/{id}/complete", method: "POST", status: 409, host: "free", async run(base) {
+    const id = await postBounty(base);
+    return fetch(`${base}/bounties/${id}/complete`, { method: "POST", headers: { "content-type": "application/json" }, body: jsonBody({ outcome: { decision: "accepted" } }) });
+  } },
   { id: "payout.post.400.bad_json", path: "/verify/payout", method: "POST", status: 400, reason: "bad_json", host: "paywalled", headers: { "content-type": "application/json" }, body: "{not json", noChallenge: true },
   { id: "quote.422.extract_missing", path: "/quote", method: "POST", status: 422, reason: "extract_missing", host: "free", body: { url: "https://example.com/pricing", extract: { nowhere: "number" } } },
   { id: "payout.quote.422.intel_unavailable", path: "/verify/payout/quote", method: "POST", status: 422, reason: "intel_unavailable", host: "free", body: OVER, extra: { fetchIntel: async () => { throw new IntelUnavailable({ name: "score_wallet_for_intel", status: 503 }); } } },

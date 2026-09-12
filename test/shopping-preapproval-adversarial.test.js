@@ -471,7 +471,7 @@ test("matrix 3 (settle-only-on-2xx): POST /witness GATE_METHOD — verified paym
   });
 });
 
-test("matrix 3 (settle-only-on-2xx): runOnce live through the paywall — 200 settles once and Done still requires the child; 422 after verify settles 0 and cannot checkout", async () => {
+test("matrix 3 (settle-only-on-2xx): runOnce live through the paywall — 200 settles once and Done still requires the child; 422 before verify settles 0 and cannot checkout", async () => {
   const key = generateProcessKey();
   const facilitatorOk = acceptingFacilitator();
   const { app: okApp } = host({ key, facilitator: facilitatorOk });
@@ -505,7 +505,8 @@ test("matrix 3 (settle-only-on-2xx): runOnce live through the paywall — 200 se
     retrieve: async () => {
       n += 1;
       // quote + unpaid deliverable probe must succeed so a payment can be minted;
-      // the paid hop is the third retrieve and fails after verify.
+      // the paid hop quotes again before the facilitator, so a retrieve fail
+      // is a 422 and never verifies.
       if (n >= 3) throw new Error("reader_503");
       return { text: CARD_HTML };
     },
@@ -523,11 +524,11 @@ test("matrix 3 (settle-only-on-2xx): runOnce live through the paywall — 200 se
         },
       }),
     });
-    assertCheckoutBlocked(run, "retrieve_failed after verify");
+    assertCheckoutBlocked(run, "retrieve_failed before verify");
     assert.equal(run.status, 422);
     assert.equal(run.decision.reason, "witness_http_422");
     assert.equal(run.check.reason, "not_run");
-    assert.equal(facilitatorFail.calls.verify, 1, "paywall verified before the handler 422");
+    assert.equal(facilitatorFail.calls.verify, 0, "a 422 from deliverability never reaches the paywall");
     assert.equal(facilitatorFail.calls.settle, 0, "422 must not settle");
   });
 });
