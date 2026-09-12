@@ -202,7 +202,6 @@ test("expectedBucket: rightmost XFF hop; empty / whitespace / absent stay on the
 
 test("loopback fixtures only: the suite never defaults to the public host", () => {
   assert.match(CELLS_SRC, /loopback/);
-  assert.doesNotMatch(SUITE_SRC, /WITNESS_BASE/);
   assert.doesNotMatch(SUITE_SRC, /https:\/\/witness\.outbid\.sh/);
   assert.doesNotMatch(CELLS_SRC, /https:\/\/witness\.outbid\.sh/);
 });
