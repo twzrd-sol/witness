@@ -1,10 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert";
 import { VERDICTS } from "../src/evidence.js";
-import { mkdtempSync } from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { readFileSync } from "node:fs";
+import { tempDir } from "./helpers/tmpdir.js";
 import { createApp } from "../src/server.js";
 import { generateProcessKey } from "../src/receipt.js";
 import { funnelOutcome, funnelReason } from "../src/funnel.js";
@@ -37,7 +36,7 @@ test("funnel reason admits only the handler's enum tokens, never free text", () 
 });
 
 test("funnel log records outcomes with spec_hash and zero sensitive fields", async () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "funnel-"));
+  const dir = tempDir("funnel-");
   const app = createApp({ key: generateProcessKey(), retrieve: async () => ({ text: FIXTURE }), funnelDir: dir });
   const server = app.listen(0, "127.0.0.1");
   await new Promise((r) => server.once("listening", r));
@@ -76,7 +75,7 @@ test("funnel log records outcomes with spec_hash and zero sensitive fields", asy
 });
 
 test("funnel is disabled when funnelDir is explicitly null", async () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "funnel-off-"));
+  const dir = tempDir("funnel-off-");
   const app = createApp({ key: generateProcessKey(), retrieve: async () => ({ text: FIXTURE }), funnelDir: null });
   const server = app.listen(0, "127.0.0.1");
   await new Promise((r) => server.once("listening", r));
@@ -89,7 +88,7 @@ test("funnel is disabled when funnelDir is explicitly null", async () => {
 });
 
 test("malformed JSON POST still records a non-deliverable outcome", async () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "funnel-bad-"));
+  const dir = tempDir("funnel-bad-");
   const app = createApp({ key: generateProcessKey(), retrieve: async () => ({ text: FIXTURE }), funnelDir: dir });
   const server = app.listen(0, "127.0.0.1");
   await new Promise((r) => server.once("listening", r));
@@ -109,7 +108,7 @@ test("malformed JSON POST still records a non-deliverable outcome", async () => 
 });
 
 test("funnel reason splits non-deliverable into its 400 shape errors and 422 capability limits", async () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "funnel-reason-"));
+  const dir = tempDir("funnel-reason-");
   const app = createApp({ key: generateProcessKey(), retrieve: async () => ({ text: FIXTURE }), funnelDir: dir });
   const server = app.listen(0, "127.0.0.1");
   await new Promise((r) => server.once("listening", r));

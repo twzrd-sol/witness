@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test test/*.test.js",
+    "test": "node --import ./test/helpers/auto-reap.js --test test/*.test.js",
     "start": "node --env-file-if-exists=.env src/listen.js",
     "mcp": "node src/mcp.js"
   },

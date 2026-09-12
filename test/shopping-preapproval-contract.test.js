@@ -17,9 +17,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync } from "node:fs";
-import os from "node:os";
-import path from "node:path";
+import { tempDir } from "./helpers/tmpdir.js";
 
 import Ajv from "ajv";
 
@@ -97,7 +95,7 @@ const witnessReqOk = compile(requestSchemaAt(DOC, "/witness", "POST"));
 function buildApp(kind, extra = {}) {
   const base = {
     key: extra.key ?? generateProcessKey(),
-    observationsDir: mkdtempSync(path.join(os.tmpdir(), "wit-oa-done-")),
+    observationsDir: tempDir("wit-oa-done-"),
     funnelDir: null,
     publicBaseUrl: BASE_URL,
     quoteRateLimit: 1000,

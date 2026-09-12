@@ -1,8 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
-import os from "node:os";
-import path from "node:path";
+import { tempDir } from "./helpers/tmpdir.js";
 
 import { createHostApp } from "../src/listen.js";
 import { SELLER_OFFER_SCHEMA_VERSION } from "../src/seller.js";
@@ -20,7 +18,7 @@ const offer = {
 };
 
 async function withServer(fn) {
-  const server = createHostApp({ OBSERVATIONS_DIR: mkdtempSync(path.join(os.tmpdir(), "wit-seller-")) }).listen(0, "127.0.0.1");
+  const server = createHostApp({ OBSERVATIONS_DIR: tempDir("wit-seller-") }).listen(0, "127.0.0.1");
   await new Promise((resolve) => server.once("listening", resolve));
   try {
     return await fn(`http://127.0.0.1:${server.address().port}`);

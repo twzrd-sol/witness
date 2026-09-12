@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync } from "node:fs";
-import os from "node:os";
+import { readFileSync } from "node:fs";
 import path from "node:path";
+import { tempDir } from "./helpers/tmpdir.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { generateProcessKey } from "../src/receipt.js";
@@ -97,7 +97,7 @@ test("bare offer form passes through the validate tool untouched", async () => {
 });
 
 test("mcp quotes record under route mcp only when a funnel dir is configured", async () => {
-  const funnelDir = mkdtempSync(path.join(os.tmpdir(), "wit-mcp-probe-"));
+  const funnelDir = tempDir("wit-mcp-probe-");
   const fetch = async () => ({ ok: true, text: async () => "<p>price: 5.99</p>" });
   await withClient({ funnelDir, fetch }, async (client) => {
     await client.callTool({

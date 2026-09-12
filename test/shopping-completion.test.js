@@ -1,11 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { runOnce, GATE_METHOD, logRun } from '../scripts/shopping-preapproval.mjs';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
-import os from 'node:os';
+import { readFileSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import childProcess from 'node:child_process';
+import { tempDir } from "./helpers/tmpdir.js";
 import { generateProcessKey, pubkeyB64, signReceipt } from '../src/receipt.js';
 import { createApp, handleWitness } from '../src/server.js';
 
@@ -120,7 +120,7 @@ test('dry simulation can approve but cannot complete or authorize checkout', asy
 test('ledger preserves completion and mechanical check evidence', async (t) => {
   const { receipt, key } = await fixture();
   const run = await runFixture(t, receipt, key);
-  const dataDir = mkdtempSync(path.join(os.tmpdir(), 'shopping-check-log-'));
+  const dataDir = tempDir('shopping-check-log-');
   t.after(() => rmSync(dataDir, { recursive: true, force: true }));
   logRun(run, { dataDir });
   const line = JSON.parse(readFileSync(path.join(dataDir, 'preapproval.ndjson'), 'utf8'));
@@ -171,7 +171,7 @@ for (const [name, program] of Object.entries({
 
 test('CLI exit 0 is checkout_approved only; dry supported quote is incomplete', async (t) => {
   const key = generateProcessKey();
-  const dir = mkdtempSync(path.join(os.tmpdir(), 'wit-shop-cli-'));
+  const dir = tempDir('wit-shop-cli-');
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const app = createApp({ key, retrieve: async () => ({ text: '<p>price: $5.99</p>' }), observationsDir: dir });
   const server = app.listen(0, '127.0.0.1');

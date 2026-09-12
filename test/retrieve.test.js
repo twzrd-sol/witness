@@ -1,9 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert";
 import { makeRetrieve } from "../src/retrieve.js";
-import { mkdtempSync } from "node:fs";
-import os from "node:os";
-import path from "node:path";
+import { tempDir } from "./helpers/tmpdir.js";
 import { createHostApp } from "../src/listen.js";
 
 const ok = (text) => async () => ({ ok: true, status: 200, text: async () => text });
@@ -36,7 +34,7 @@ test("host quote extracts from a reader envelope, not the transport wrapper", as
     status: 200,
     text: async () => JSON.stringify({ ok: true, title: "", content: "rank: 1\n" }),
   });
-  const server = createHostApp({ OBSERVATIONS_DIR: mkdtempSync(path.join(os.tmpdir(), "wit-env-")) }, { readerFetch }).listen(0, "127.0.0.1");
+  const server = createHostApp({ OBSERVATIONS_DIR: tempDir("wit-env-") }, { readerFetch }).listen(0, "127.0.0.1");
   await new Promise((r) => server.once("listening", r));
   try {
     const res = await fetch(`http://127.0.0.1:${server.address().port}/quote`, {
@@ -114,7 +112,7 @@ test("quote 200 with fixture retrieve — reader URL carries the encoded target"
     seen = url;
     return { ok: true, status: 200, text: async () => "rank: 1\nbid_usdc: 5" };
   };
-  const server = createHostApp({ OBSERVATIONS_DIR: mkdtempSync(path.join(os.tmpdir(), "wit-ret-")) }, { readerFetch }).listen(0, "127.0.0.1");
+  const server = createHostApp({ OBSERVATIONS_DIR: tempDir("wit-ret-") }, { readerFetch }).listen(0, "127.0.0.1");
   await new Promise((r) => server.once("listening", r));
   try {
     const port = server.address().port;

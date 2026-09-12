@@ -1,15 +1,15 @@
 // Keystore: generate-once, persist 0600, reload same key. deps.key wins.
 import { test } from "node:test";
 import assert from "node:assert";
-import { mkdtempSync, existsSync, statSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, statSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import { tempDir } from "./helpers/tmpdir.js";
 
 import { loadOrCreateKeystore } from "../src/keystore.js";
 import { pubkeyB64, generateProcessKey } from "../src/receipt.js";
 
 test("keystore persists one process key across reloads", () => {
-  const dir = mkdtempSync(join(tmpdir(), "witness-ks-"));
+  const dir = tempDir("witness-ks-");
   try {
     const first = loadOrCreateKeystore(dir);
     const file = join(dir, "keystore");

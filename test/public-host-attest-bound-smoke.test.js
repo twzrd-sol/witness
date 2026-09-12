@@ -15,10 +15,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
-import { mkdtempSync, readFileSync } from "node:fs";
-import os from "node:os";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { tempDir } from "./helpers/tmpdir.js";
 
 import { createApp } from "../src/server.js";
 import { createHostApp, listenExclusive } from "../src/listen.js";
@@ -110,7 +110,7 @@ async function serve(app, fn) {
 function paywalledHost(attest) {
   return createApp({
     key: generateProcessKey(),
-    observationsDir: mkdtempSync(path.join(os.tmpdir(), "wit-bound-smoke-")),
+    observationsDir: tempDir("wit-bound-smoke-"),
     funnelDir: null,
     facilitator: refusingFacilitator,
     paywall: PAYWALL,
@@ -219,7 +219,7 @@ test("paywalled loopback host (public-host wiring) is BOUND — every named chec
 test("createHostApp without payee env is UNBOUND — unpaid attest signs, checker fail-closes", async () => {
   const fake = countingAttest();
   const app = createHostApp({
-    OBSERVATIONS_DIR: mkdtempSync(path.join(os.tmpdir(), "wit-unbound-smoke-")),
+    OBSERVATIONS_DIR: tempDir("wit-unbound-smoke-"),
     PUBLIC_BASE_URL: PUBLIC_BASE,
   }, { attest: fake.attest });
   await serve(app, async (base) => {
@@ -367,7 +367,7 @@ test("CLI against a paywalled loopback host exits 0 and prints BOUND", async () 
 test("CLI against an unbound loopback host exits 1 and prints UNBOUND", async () => {
   const fake = countingAttest();
   const app = createHostApp({
-    OBSERVATIONS_DIR: mkdtempSync(path.join(os.tmpdir(), "wit-unbound-cli-")),
+    OBSERVATIONS_DIR: tempDir("wit-unbound-cli-"),
     PUBLIC_BASE_URL: PUBLIC_BASE,
   }, { attest: fake.attest });
   await serve(app, async (base) => {

@@ -36,9 +36,9 @@
  */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync } from "node:fs";
-import os from "node:os";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
+import { tempDir } from "./helpers/tmpdir.js";
 
 import { createApp } from "../src/server.js";
 import { listenExclusive } from "../src/listen.js";
@@ -146,7 +146,7 @@ async function serve(app, fn) {
 }
 
 function host(extra = {}) {
-  const observationsDir = extra.observationsDir ?? mkdtempSync(path.join(os.tmpdir(), "wit-off-adv-"));
+  const observationsDir = extra.observationsDir ?? tempDir("wit-off-adv-");
   const reader = extra.retrieve ? { retrieve: extra.retrieve, calls: extra.retrieveCalls } : countingRetrieve(extra.merchantPrice ?? 600);
   return {
     app: createApp({
@@ -368,7 +368,7 @@ test("matrix 1 (shape/400 never 402): funnelOutcome has no offers category — a
   assert.equal(funnelOutcome("/api/quotes", 402), "witness_402_challenge");
   assert.equal(funnelReason({ reason: "bad_offer_quote" }), "bad_offer_quote");
 
-  const dir = mkdtempSync(path.join(os.tmpdir(), "wit-off-funnel-"));
+  const dir = tempDir("wit-off-funnel-");
   const probe = countingProbe();
   const { app } = host({ funnelDir: dir, probeFetch: probe.fetch });
   await serve(app, async (base) => {
@@ -465,7 +465,7 @@ test("matrix 2 (forged payment headers): POST /api/quotes — a forged or stolen
 });
 
 test("matrix 2 (forged payment headers): funnel — forged pay on /witness is a 402 challenge row with no payment material; /api/quotes still writes nothing", async () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "wit-off-funnel-"));
+  const dir = tempDir("wit-off-funnel-");
   const facilitator = acceptingFacilitator();
   const { app } = host({ funnelDir: dir, facilitator });
   await serve(app, async (base) => {
@@ -549,7 +549,7 @@ test("matrix 3 (settle-only-on-2xx): POST /api/quotes — host facilitator settl
 });
 
 test("matrix 3 (settle-only-on-2xx): funnel — witness_signed_receipt only after a 200; 400/422/500 after verify never record a receipt or increment settle", async () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "wit-off-funnel-"));
+  const dir = tempDir("wit-off-funnel-");
   const key = generateProcessKey();
   const facilitator = acceptingFacilitator();
   let retrieveMode = "ok";

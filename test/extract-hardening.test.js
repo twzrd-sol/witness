@@ -4,9 +4,8 @@ import { EventEmitter } from "node:events";
 import { spawn } from "node:child_process";
 import { createServer } from "node:net";
 import { fileURLToPath } from "node:url";
-import { mkdtempSync } from "node:fs";
 import os from "node:os";
-import path from "node:path";
+import { tempDir } from "./helpers/tmpdir.js";
 import { MAX_EXTRACT_KEY_LENGTH, MAX_EXTRACT_KEYS, normalizeExtract } from "../src/extract.js";
 import { generateProcessKey } from "../src/receipt.js";
 import { methodFromRequest, specHash } from "../src/observatory.js";
@@ -159,7 +158,7 @@ test("listen helper: an occupied exclusive port fails with a host listen error, 
 
 test("entrypoint: a fatal before listen (port already bound) exits non-zero, so systemd Restart=on-failure fires", async () => {
   const blocker = await occupyLoopback();
-  const cwd = mkdtempSync(path.join(os.tmpdir(), "wit-entry-")); // data/keystore lands here, never in the repo
+  const cwd = tempDir("wit-entry-"); // data/keystore lands here, never in the repo
   try {
     const child = spawnNode([ENTRY], cwd, { HOST: "127.0.0.1", PORT: String(blocker.address().port) });
     let err = "", out = "";

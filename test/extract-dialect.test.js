@@ -1,8 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert";
-import { mkdtempSync, readFileSync } from "node:fs";
-import os from "node:os";
+import { readFileSync } from "node:fs";
 import path from "node:path";
+import { tempDir } from "./helpers/tmpdir.js";
 import { normalizeExtract } from "../src/extract.js";
 import { generateProcessKey, signReceipt, sourceHash } from "../src/receipt.js";
 import { methodFromRequest, specHash } from "../src/observatory.js";
@@ -72,7 +72,7 @@ test("real extract_missing is still 422 — in the JSON Schema dialect too", asy
 });
 
 test("POST /quote: JSON Schema 200, array 400, both dialects share one funnel spec_hash", async () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "dialect-"));
+  const dir = tempDir("dialect-");
   const app = createApp({ key: generateProcessKey(), retrieve, funnelDir: dir });
   const server = app.listen(0, "127.0.0.1");
   await new Promise((r) => server.once("listening", r));

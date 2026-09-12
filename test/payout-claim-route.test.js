@@ -1,8 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert";
-import { existsSync, mkdtempSync, readFileSync } from "node:fs";
-import os from "node:os";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
+import { tempDir } from "./helpers/tmpdir.js";
 import { generateProcessKey, verifyReceipt } from "../src/receipt.js";
 import { createApp } from "../src/server.js";
 import { openapiDoc } from "../src/openapi.js";
@@ -105,7 +105,7 @@ test("verify unpaid: a deliverable request gets a 402 carrying the $0.05 atomic 
 
 test("verify paid: one scrape, one intel bundle, a receipt that verifies and matches the quote, appended to its own log", async () => {
   const key = generateProcessKey();
-  const dir = mkdtempSync(path.join(os.tmpdir(), "wit-payout-"));
+  const dir = tempDir("wit-payout-");
   let retrieves = 0, intels = 0;
   const deps = { retrieve: async () => (retrieves++, { text: BOARD }), fetchIntel: async () => (intels++, intelOk()), paid: true, key, now: () => "2026-09-10T00:00:00.000Z", observationsDir: dir };
   const out = await handlePayoutVerify(OVER, deps);
@@ -172,7 +172,7 @@ test("GET /verify/payout is crawlable discovery: 402 challenge, zero retrieve or
 });
 
 test("no paywall: forged payment headers never mint a receipt or append", async () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "wit-payout-"));
+  const dir = tempDir("wit-payout-");
   const app = createApp({ key: generateProcessKey(), retrieve: async () => ({ text: BOARD }), fetchIntel: intelOk, observationsDir: dir, funnelDir: null });
   await withServer(app, async (base) => {
     for (const headers of [{ "x-payment": "forged" }, { "payment-signature": "forged" }]) {
@@ -209,7 +209,7 @@ test("malformed JSON on the payout routes is a 400 bad_json, never 500", async (
 });
 
 test("funnel: payout routes record outcome and spec_hash only, never the wallet, url, or figures", async () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "wit-funnel-"));
+  const dir = tempDir("wit-funnel-");
   const app = createApp({ key: generateProcessKey(), retrieve: async () => ({ text: BOARD }), fetchIntel: intelOk, funnelDir: dir, observationsDir: dir });
   await withServer(app, async (base) => {
     await post(base, PAYOUT_QUOTE_ROUTE, OVER);

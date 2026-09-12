@@ -29,9 +29,7 @@
  */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
-import os from "node:os";
-import path from "node:path";
+import { tempDir } from "./helpers/tmpdir.js";
 
 import { createApp } from "../src/server.js";
 import { listenExclusive } from "../src/listen.js";
@@ -118,7 +116,7 @@ async function serve(app, fn) {
 }
 
 function host(extra = {}) {
-  const observationsDir = extra.observationsDir ?? mkdtempSync(path.join(os.tmpdir(), "wit-adv-"));
+  const observationsDir = extra.observationsDir ?? tempDir("wit-adv-");
   return createApp({
     key: extra.key ?? generateProcessKey(),
     retrieve: extra.retrieve ?? (async () => ({ text: FIXTURE })),
@@ -269,7 +267,7 @@ test("matrix 1 (shape/400 never 402): POST /delivery/attest — off-shape and un
 test("matrix 2 (forged payment headers): POST /witness — invented and malformed X-PAYMENT / PAYMENT-SIGNATURE never mint a receipt or settle", async () => {
   const facilitator = acceptingFacilitator();
   const key = generateProcessKey();
-  const dir = mkdtempSync(path.join(os.tmpdir(), "wit-adv-"));
+  const dir = tempDir("wit-adv-");
   await serve(host({ key, facilitator, observationsDir: dir }), async (base) => {
     const headers = [
       { "x-payment": "forged" },
@@ -436,7 +434,7 @@ test("matrix 3 (per-IP vs forwarded-IP): IPv6 X-Forwarded-For addresses are dist
 
 test("matrix 4 (settle-only-on-2xx): POST /witness — a verified payment settles once on 200 and never on 400/422/500", async () => {
   const key = generateProcessKey();
-  const dir = mkdtempSync(path.join(os.tmpdir(), "wit-adv-"));
+  const dir = tempDir("wit-adv-");
   const facilitator = acceptingFacilitator();
   let retrieveMode = "ok";
   const app = host({
