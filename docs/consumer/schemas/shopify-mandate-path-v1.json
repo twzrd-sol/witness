@@ -1,0 +1,123 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://witness.outbid.sh/schemas/shopify-mandate-path-v1.json",
+  "title": "Shopify env-gated mandate path report (digital-product pilot)",
+  "description": "Env-gated Shopify mandate path. Unset or blank SHOPIFY_STORE_URL is a no-op: the path does not inspect the bundle. A set value is validated as https with no userinfo and is never fetched. When armed, the path evaluates offline leakage predicates only. It does not invent a store URL, does not complete checkout, and is not a Done predicate. Operator env only — never a signed-mandate field.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "kind",
+    "live_store",
+    "fetched",
+    "invented",
+    "armed",
+    "ready",
+    "path",
+    "action",
+    "store",
+    "failed",
+    "completion",
+    "checkout_approved",
+    "check"
+  ],
+  "properties": {
+    "kind": {
+      "const": "witness.shopify_mandate_path.v1",
+      "description": "Path report domain. An observation receipt or shopping mandate is not this document."
+    },
+    "live_store": {
+      "const": false,
+      "description": "This increment never contacts a live store."
+    },
+    "fetched": {
+      "const": false,
+      "description": "The path never fetches. A configured URL is not a retrieval."
+    },
+    "invented": {
+      "const": false,
+      "description": "No default store URL is synthesized. Only SHOPIFY_STORE_URL is read."
+    },
+    "armed": {
+      "type": "boolean",
+      "description": "true only when a valid https store URL is configured. Armed is still not live."
+    },
+    "ready": {
+      "type": "boolean",
+      "description": "true only when armed and every offline path predicate holds. Ready is not checkout approval."
+    },
+    "path": {
+      "type": "string",
+      "enum": ["idle", "env_ready"],
+      "description": "idle when the env is unset or invalid. env_ready when a valid store URL is configured."
+    },
+    "action": {
+      "type": "string",
+      "enum": ["unset_noop", "invalid_noop", "configured_eval"]
+    },
+    "store": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["env", "ok", "enabled", "reason"],
+      "properties": {
+        "env": {
+          "const": "SHOPIFY_STORE_URL"
+        },
+        "ok": {
+          "type": "boolean",
+          "description": "false only when the env is set and the value is not a usable https URL."
+        },
+        "enabled": {
+          "type": "boolean",
+          "description": "true only when a valid https store URL is configured. Never implies a live call."
+        },
+        "reason": {
+          "type": "string",
+          "enum": ["store_url_unset", "store_url_configured", "store_url_invalid"]
+        }
+      }
+    },
+    "failed": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "mandate_rejects_store_fields",
+          "resource_not_store_origin",
+          "quote_not_store_origin",
+          "human_checkout_untouched"
+        ]
+      },
+      "description": "Empty when idle (bundle not inspected) or when every armed predicate holds."
+    },
+    "completion": {
+      "const": "incomplete",
+      "description": "The path cannot grant Done."
+    },
+    "checkout_approved": {
+      "const": false,
+      "description": "The path cannot approve checkout. Human merchant-checkout stays on the offers rail."
+    },
+    "check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["approve", "reason"],
+      "properties": {
+        "approve": {
+          "const": false
+        },
+        "reason": {
+          "type": "string",
+          "enum": [
+            "store_url_unset",
+            "store_url_invalid",
+            "path_ready_not_live",
+            "mandate_rejects_store_fields",
+            "resource_not_store_origin",
+            "quote_not_store_origin",
+            "human_checkout_untouched"
+          ]
+        }
+      }
+    }
+  }
+}

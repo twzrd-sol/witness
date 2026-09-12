@@ -84,6 +84,10 @@ A passing report is:
 false. A fixture quote plus a child `receipt_check` can still satisfy
 `evaluateDone` — that is a different checker.
 
+The checklist also reports the Shopify env-gated path (`evaluateStoreMandatePath`)
+as `store` + `path`. Unset `SHOPIFY_STORE_URL` is an idle no-op and does not
+fail the checklist. An armed path is still `checkout_approved: false`.
+
 ## Human-checkout invariant
 
 `src/offers.js` `merchant_checkout` (Pixel Surplus cart permalink) stays the
@@ -108,7 +112,7 @@ A bundle whose quote is a merchant cart fails `quote_from_fixture` and
 ## Offline verification
 
 ```sh
-node --test test/offline-buyer-checklist.test.js
+node --test test/offline-buyer-checklist.test.js test/shopify-mandate-path.test.js
 npm test
 git diff --check
 ```

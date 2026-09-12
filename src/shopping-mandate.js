@@ -3,9 +3,9 @@
  *
  * Schema and docs: docs/consumer/schemas/shopping-mandate-v1.json,
  * docs/consumer/shopping-mandate.md. Store URL env is owned by
- * shopify-mandate-stub.js (SHOPIFY_STORE_URL; no-op until set). Pure
- * functions. No HTTP, no storefront host, no wallet. Caller-supplied keys
- * in the document are never a trust anchor.
+ * shopify-mandate-stub.js / shopify-mandate-path.js (SHOPIFY_STORE_URL;
+ * no-op until set). Pure functions. No HTTP, no storefront host, no
+ * wallet. Caller-supplied keys in the document are never a trust anchor.
  */
 import { createPublicKey, sign as edSign, verify as edVerify } from "node:crypto";
 import { readFileSync } from "node:fs";
@@ -16,6 +16,10 @@ import {
   resolveStoreUrl,
   evaluateShopifyMandateStub,
 } from "./shopify-mandate-stub.js";
+import {
+  evaluateShopifyMandatePath,
+  pathSummary,
+} from "./shopify-mandate-path.js";
 
 export const SCHEMA = "witness.shopping_mandate.v1";
 export const AUDIENCE = "witness.shopping.digital_product";
@@ -28,7 +32,11 @@ export {
   STORE_URL_JSON_SCHEMA,
   resolveStoreUrl,
   evaluateShopifyMandateStub,
+  evaluateShopifyMandatePath,
 };
+
+/** Alias so library consumers can report the path without naming the store. */
+export const evaluateStoreMandatePath = evaluateShopifyMandatePath;
 
 export const MANDATE_JSON_SCHEMA = JSON.parse(
   readFileSync(new URL("../docs/consumer/schemas/shopping-mandate-v1.json", import.meta.url), "utf8"),
@@ -264,7 +272,7 @@ function receiptCheckOk(check) {
 export function evaluateDone(bundle, opts = {}) {
   const failed = [];
   const now = opts.now ?? Date.now();
-  const stub = evaluateShopifyMandateStub({ env: opts.env ?? process.env });
+  const storePath = evaluateShopifyMandatePath(bundle, { env: opts.env ?? process.env });
   const mandate = bundle && typeof bundle === "object" ? bundle.mandate : null;
   const quoteWrap = bundle && typeof bundle === "object" ? bundle.quote : null;
   const quote = unwrapQuote(quoteWrap);
@@ -307,6 +315,7 @@ export function evaluateDone(bundle, opts = {}) {
     checkout_approved: complete,
     failed: unique,
     check: { approve: complete, reason: complete ? "mandate_done" : unique[0] },
-    store: stub.store,
+    store: storePath.store,
+    path: pathSummary(storePath),
   };
 }

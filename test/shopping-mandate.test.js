@@ -290,6 +290,7 @@ test("human-checkout catalog and handleOfferQuote stay mandate-free", async (t) 
 test("mandate module wires SHOPIFY_STORE_URL and never names a storefront host", () => {
   assert.match(SRC, /SHOPIFY_STORE_URL/);
   assert.match(SRC, /shopify-mandate-stub/);
+  assert.match(SRC, /shopify-mandate-path/);
   assert.doesNotMatch(SRC, /myshopify|pixelsurplus/i);
   assert.equal(STORE_URL_ENV, "SHOPIFY_STORE_URL");
 });

@@ -328,6 +328,7 @@ test("merchant rail and HTTP host do not import the stub", () => {
   };
   for (const file of walk(path.join(ROOT, "src"))) {
     if (file.endsWith(`${path.sep}shopify-mandate-stub.js`)) continue;
+    if (file.endsWith(`${path.sep}shopify-mandate-path.js`)) continue;
     if (file.endsWith(`${path.sep}shopping-mandate.js`)) continue;
     assert.doesNotMatch(readFileSync(file, "utf8"), /shopify-mandate-stub/, path.relative(ROOT, file));
   }
