@@ -101,6 +101,12 @@ stays the human handoff rail. Mandate/Done evaluation must not:
 A bundle whose quote is a merchant cart is `incomplete` with
 `human_checkout_untouched` (and usually `rail_x402`) failed.
 
+Invariant lock: `test/human-checkout-untouched.test.js` (Wave9 EE). It pins
+source isolation, bit-identical `handleOfferQuote` with/without a mandate,
+hijack-shaped quotes (`checkout_url` / `cart_url` / `cart` on an otherwise
+valid x402 body), and the HTTP catalog/quote surface. The mandate path cannot
+rewrite the human rail.
+
 ## What this increment does not do
 
 - No `POST /authorize-purchase` route, no SQLite reservation ledger.
@@ -111,7 +117,7 @@ A bundle whose quote is a merchant cart is `incomplete` with
 ## Offline verification
 
 ```sh
-node --test test/shopping-mandate.test.js
+node --test test/shopping-mandate.test.js test/human-checkout-untouched.test.js
 npm test
 git diff --check
 ```
