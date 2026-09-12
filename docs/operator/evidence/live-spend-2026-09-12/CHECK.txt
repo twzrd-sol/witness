@@ -1,0 +1,9 @@
+PASS  quote_scrape           200 price_usdc=0.01 retrieval=scrape verdict=supported
+PASS  quote_browse           200 price_usdc=0.06 retrieval=browse
+PASS  witness_receipt        stock=99 retrieval=scrape verifies against recorded /pubkey
+PASS  witness_settlement     eip155:8453 0xd131e3c113ed840c16e544916f93560b313fe7de91a8e0490c3bf619c519f31b
+PASS  agent_browser          stock=99 matches receipt (existing CLI, --no-sandbox)
+PASS  intel_pay              paid=true score=48 receipt=v7 not /v1/witness/attest
+PASS  intel_settlement       eip155:8453 0x7c740a90f7d6a1d1ef0e14ae443c4d5580cb7fb2d6d0faff8123fabd810cf637
+PASS  no_secrets             assertNoSecrets on every recorded file
+DONE

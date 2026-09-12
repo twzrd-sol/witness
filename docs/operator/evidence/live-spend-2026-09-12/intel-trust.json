@@ -1,0 +1,18 @@
+{
+  "status": 200,
+  "paid": true,
+  "network": "eip155:8453",
+  "tx": "0x7c740a90f7d6a1d1ef0e14ae443c4d5580cb7fb2d6d0faff8123fabd810cf637",
+  "seller_wallet": "F1AbWuXJcBT9arW9wc6Xr2vom5NBtngWsz6Ht16jRBLM",
+  "trust_score": 48,
+  "score_version": "intel_renorm_v1_1",
+  "wash_classification": "unknown",
+  "receipt_version": "v7",
+  "receipt_kind": "twzrd_reputation_receipt_v7",
+  "signing_alg": "ed25519",
+  "settlement": {
+    "network": "eip155:8453",
+    "transaction": "0x7c740a90f7d6a1d1ef0e14ae443c4d5580cb7fb2d6d0faff8123fabd810cf637",
+    "payer": "0xB36e83aB5E6128bC0E1b76b3F59Fe2fD443F0788"
+  }
+}

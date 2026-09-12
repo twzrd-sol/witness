@@ -1,0 +1,47 @@
+{
+  "status": 200,
+  "settlement": {
+    "network": "eip155:8453",
+    "transaction": "0xd131e3c113ed840c16e544916f93560b313fe7de91a8e0490c3bf619c519f31b",
+    "payer": "0xb36e83ab5e6128bc0e1b76b3f59fe2fd443f0788"
+  },
+  "receipt": {
+    "value": {
+      "stock": 99
+    },
+    "assertion": "stock < 100000",
+    "observed_at": "2026-09-12T18:09:30.938Z",
+    "source_hash": "3144add4468db00236e456ba1ce28ceeb44b2796fbf01dba311c667d2907a1b2",
+    "requested_url": "https://dummyjson.com/products/1",
+    "final_url": null,
+    "origin_status": null,
+    "origin_content_type": null,
+    "representation": {
+      "kind": "reader_plaintext",
+      "sha256": "3144add4468db00236e456ba1ce28ceeb44b2796fbf01dba311c667d2907a1b2",
+      "retrieved_at": "2026-09-12T18:09:30.938Z"
+    },
+    "evidence": "discountPercentage\":10.48,\"rating\":2.56,\"stock\":99,\"tags\":\\[\"beauty\",\"mascara\"\\],\"brand\":\"Essence\",\"sku\":\"BEA-ESS-",
+    "evidence_spans": {
+      "stock": {
+        "start": 324,
+        "end": 326
+      }
+    },
+    "verdict": "supported",
+    "verdict_reason": null,
+    "agreement": "1-of-1",
+    "method": {
+      "url": "https://dummyjson.com/products/1",
+      "retrieval": "scrape",
+      "extract": {
+        "stock": "number"
+      },
+      "assertion": "stock < 100000"
+    },
+    "spec_hash": "0b3b6131377d3ae3a37f4116b2989349d0275bc152d85acf81d338dfb02760d7",
+    "valid_until": "2026-09-12T19:09:30.938Z",
+    "vantage": "box",
+    "receipt": "oFOHof5FBFDlz21qwjWdjyqdQdMX6p27CkkN81RhYhGROZ3r9jg4cggQIz35HP/JILtfOXTCz7kG/r38hihwBQ=="
+  }
+}
