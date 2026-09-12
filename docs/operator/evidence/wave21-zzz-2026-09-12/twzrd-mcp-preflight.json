@@ -1,0 +1,66 @@
+{
+  "fetched_at": "2026-09-12T18:06:49Z",
+  "note": "Free TWZRD MCP preflight before any witness spend. Intel $0.05 paid trust was not bought.",
+  "evaluate_x402_resource": {
+    "url": "https://witness.outbid.sh/witness",
+    "method": "GET",
+    "is_x402": true,
+    "seller_wallet": "F1AbWuXJcBT9arW9wc6Xr2vom5NBtngWsz6Ht16jRBLM",
+    "price_usdc": 0.01,
+    "decision": "warn",
+    "recommended_action": "proceed_with_cap",
+    "maximum_recommended_spend_usdc": 0.01,
+    "can_spend": true,
+    "wash_flagged_on_evidence": false
+  },
+  "evaluate_x402_resource_attest_get": {
+    "url": "https://witness.outbid.sh/delivery/attest",
+    "method": "GET",
+    "is_x402": false,
+    "decision": "unknown",
+    "error": "HTTP 404 (not 402) — POST-only route; unpaid POST later returned 402"
+  },
+  "get_readiness_card_tool": {
+    "seller_wallet": "F1AbWuXJcBT9arW9wc6Xr2vom5NBtngWsz6Ht16jRBLM",
+    "decision": "warn",
+    "recommended_cap_usdc": 0.01,
+    "recommended_action": "proceed_with_cap"
+  },
+  "get_merchant_card": [
+    {
+      "wallet": "F1AbWuXJcBT9arW9wc6Xr2vom5NBtngWsz6Ht16jRBLM",
+      "wash_flagged": null,
+      "decision": "insufficient_evidence",
+      "reason": "wash/circular-flow axis not evaluated (coverage gap, not clean)"
+    },
+    {
+      "wallet": "0x14df772BD496bBb7f49Bc3E992Ce13B2c441177F",
+      "wash_flagged": null,
+      "decision": "insufficient_evidence",
+      "reason": "no observed inbound x402 demand in corpus (thin or new)"
+    }
+  ],
+  "is_wash_fleet": [
+    {
+      "wallet": "F1AbWuXJcBT9arW9wc6Xr2vom5NBtngWsz6Ht16jRBLM",
+      "classification": "unknown",
+      "is_circular": false,
+      "reason": "no_corpus_data",
+      "chain": "solana"
+    },
+    {
+      "wallet": "0x14df772BD496bBb7f49Bc3E992Ce13B2c441177F",
+      "classification": "clean",
+      "is_circular": false,
+      "total_events": 4,
+      "distinct_merchants": 1,
+      "chain": "base",
+      "note": "merchant_card on this address is still insufficient_evidence; fail-closed spends only when merchant.wash_flagged===false AND classification===clean"
+    }
+  ],
+  "spend_decision": {
+    "spend": false,
+    "reason": "wash_unevaluated",
+    "unpaid_402_sufficient": true
+  }
+}

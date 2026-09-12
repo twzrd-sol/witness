@@ -1,0 +1,32 @@
+PASS  live_host_allowed                          https://witness.outbid.sh
+PASS  discovery_pubkey                           status 200
+PASS  discovery_well_known                       status 200
+PASS  discovery_llms                             status 200 bytes=5143
+PASS  discovery_openapi                          status 200
+PASS  get_witness_402                            status 402
+PASS  quote_never_402                            no quote 402
+PASS  quote_documented_deliverable_or_honest     status 200 {"can_deliver":true,"price_usdc":"0.01","retrieval":"scrape","verdict":"supported","verdict_reason":null,"has_receipt":false}
+PASS  quote_gate_method_deliverable_or_honest    status 200 {"can_deliver":true,"price_usdc":"0.01","retrieval":"scrape","verdict":"supported","verdict_reason":null,"has_receipt":false}
+PASS  quote_bad_extract_400                      status 400 bad_extract
+PASS  witness_unpaid_paywall_or_quote_first      doc 402 gate 402
+PASS  witness_challenge_names_resource           resource https://witness.outbid.sh/witness
+PASS  witness_challenge_price                    ["10000","10000"]
+PASS  witness_challenge_both_rails               v=2 nets=["eip155:8453","solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"]
+PASS  witness_bad_extract_never_402              status 400
+PASS  witness_forged_does_not_unlock             status 402
+PASS  witness_unpaid_no_receipt                  no signed receipt on unpaid/forged witness
+PASS  attest_unpaid_402                          status 402
+PASS  attest_challenge_names_resource            resource https://witness.outbid.sh/delivery/attest
+PASS  attest_challenge_price                     ["10000","10000"]
+PASS  attest_challenge_both_rails                v=2 nets=["eip155:8453","solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"]
+PASS  attest_shape_never_402                     status 400 bad_offer
+PASS  attest_forged_does_not_unlock              status 402
+PASS  attest_unpaid_no_receipt                   no signed receipt on unpaid/forged attest
+PASS  done_gate_dry_not_complete                 completion=incomplete checkout=false sim_approve=true
+PASS  done_gate_unpaid_not_approved              unpaid GATE_METHOD witness 402; checkout_approved=false
+PASS  preflight_ran                              payTos=1
+PASS  wash_fail_closed                           wash_unevaluated
+PASS  no_invented_payer                          none
+PASS  spend_logged                               no USDC moved; wash_unevaluated
+LIVE_OK
+SPEND  not_attempted  wash_unevaluated  amount_usdc=0

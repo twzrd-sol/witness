@@ -6,7 +6,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync, readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -144,4 +144,26 @@ test("CLI refuses without --live and refuses a stranger --base (no fetch)", asyn
   assert.equal(stranger.status, 2);
   assert.match(stranger.stderr, /only https:\/\/witness\.outbid\.sh/);
   assert.equal(stranger.stdout.includes("LIVE_OK"), false);
+});
+
+test("recorded Wave21 live bundle is LIVE_OK with zero spend and no secrets", () => {
+  const dir = path.join(ROOT, "docs/operator/evidence/wave21-zzz-2026-09-12");
+  const probes = JSON.parse(readFileSync(path.join(dir, "probes.json"), "utf8"));
+  const spend = JSON.parse(readFileSync(path.join(dir, "spend-log.ndjson"), "utf8").trim().split("\n")[0]);
+  const check = readFileSync(path.join(dir, "CHECK.txt"), "utf8");
+  assert.equal(probes.host, LIVE_HOST);
+  assert.equal(probes.ok, true);
+  assert.deepEqual(probes.failed, []);
+  assert.equal(probes.payerPath, null);
+  assert.equal(probes.spend.spend, false);
+  assert.equal(probes.checks.length, CHECK_NAMES.length);
+  assert.deepEqual(probes.checks.map((c) => c.name), [...CHECK_NAMES]);
+  assert.ok(probes.checks.every((c) => c.pass === true));
+  assert.equal(spend.amount_usdc, 0);
+  assert.equal(spend.payer, null);
+  assert.equal(spend.status, "not_attempted");
+  assert.match(check, /LIVE_OK/);
+  assert.match(check, /amount_usdc=0/);
+  assertNoSecrets(probes);
+  assertNoSecrets(spend);
 });
