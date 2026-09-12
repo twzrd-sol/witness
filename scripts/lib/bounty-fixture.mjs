@@ -19,7 +19,7 @@ export async function listen(app) {
 // instance (the pilot shape). The gate stays a labelled fixture either way.
 export async function fixture({ externalSellerUrl = null } = {}) {
   const dir = mkdtempSync(path.join(os.tmpdir(), 'witness-bounty-'));
-  const actors = fixtureActors(), calls = [], state = { decision: 'allow', canSpend: true, gateStatus: 200, sellerStatus: 200, delayMs: 0, cardMutate: null, gateExtras: {} };
+  const actors = fixtureActors(), calls = [], state = { decision: 'allow', canSpend: true, cap: null, gateStatus: 200, sellerStatus: 200, delayMs: 0, cardMutate: null, gateExtras: {} };
   const deps = express(); deps.use(express.json());
   deps.post('/seller/offer/validate', (req, res, next) => {
     calls.push({ kind: 'card', body: req.body });
@@ -32,7 +32,7 @@ export async function fixture({ externalSellerUrl = null } = {}) {
     calls.push({ kind: 'gate', body: req.body });
     if (state.delayMs) await new Promise(resolve => setTimeout(resolve, state.delayMs));
     if (state.gateStatus !== 200) return res.sendStatus(state.gateStatus);
-    res.json({ readiness_card: { decision: state.decision, can_spend: state.canSpend, seller_wallet: req.body.seller_wallet, chain: req.body.chain, price_usdc: req.body.price_usdc, ...state.gateExtras }, fixture: true });
+    res.json({ readiness_card: { decision: state.decision, can_spend: state.canSpend, seller_wallet: req.body.seller_wallet, chain: req.body.chain, price_usdc: req.body.price_usdc, ...(state.cap === null ? {} : { maximum_recommended_spend_usdc: state.cap }), ...state.gateExtras }, fixture: true });
   });
   const dependency = await listen(deps);
   const config = { dbPath: path.join(dir, 'board.sqlite'), keyPath: path.join(dir, 'key.pem'), actors, sellerUrl: externalSellerUrl ?? `${dependency.url}/seller/offer/validate`, preflightUrl: `${dependency.url}/preflight`, fixtureMode: true };

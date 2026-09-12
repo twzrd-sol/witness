@@ -4,7 +4,23 @@ Implemented in the isolated `codex/bounty-http-loop-20260910` branch. This is a 
 
 ## Start
 
-Requires Node 24 (built-in SQLite) and the repository's installed dependencies. Create a private JSON actor file containing an array of objects with `id`, `role` (`poster`, `claimer`, `operator`), `network` (`base`, `solana`), `wallet`, and a unique random `token` of at least 32 characters. Bind identities to operator-enrolled wallets; a wallet string in a request is not authentication. Protect this file with mode 0600. Do not put credentials in URLs or Git.
+Requires Node 24 (built-in SQLite) and the repository's installed dependencies.
+
+Build the actor file with `scripts/make-actors-file.mjs`, which applies the board's own gate to
+every wallet before writing and refuses the file if any wallet cannot clear it -- an actors file
+that 403s on every transition is worse than no file, because it looks enrolled:
+
+```sh
+node scripts/make-actors-file.mjs --dry-run --max-reward 1 \
+  --actor poster:base:0xYOURPOSTER --actor claimer:base:0xYOURCLAIMER
+# PASS/FAIL per wallet with its live decision, can_spend and cap. Then, once all PASS:
+node scripts/make-actors-file.mjs --out /private/bounty-actors.json --max-reward 1 --actor ...
+```
+
+It generates the 32-byte tokens itself and writes mode 0600 with `flag: 'wx'`, so it never
+overwrites an existing credential file. Or create the file by hand:
+
+Create a private JSON actor file containing an array of objects with `id`, `role` (`poster`, `claimer`, `operator`), `network` (`base`, `solana`), `wallet`, and a unique random `token` of at least 32 characters. Bind identities to operator-enrolled wallets; a wallet string in a request is not authentication. Protect this file with mode 0600. Do not put credentials in URLs or Git.
 
 ```sh
 BOUNTY_ACTORS_FILE=/private/bounty-actors.json \
@@ -55,7 +71,9 @@ Seller contract preservation: unparseable JSON → `bad_json`; parseable JSON wi
 
 The board calls the configured seller HTTP route with `{offer,outcomes}`. Posting supplies empty payment history; claiming supplies authenticated completions for that network/wallet. Empty history stays unknown. Accepted/rejected delivery history accrues in subsequent card snapshots; existing snapshots are immutable.
 
-Preflight uses the existing free `POST /v1/intel/preflight` contract: `resource_name`, `seller_wallet`, `price_usdc`, `chain`, `agent_intent`. The response must explicitly say `decision:allow` and `can_spend:true`. Warn/block/unknown, expired evidence, echoed identity/network/amount mismatch, HTTP failure and parsing errors refuse the transition. The receipt binds the exact request and response. Missing response echoes are not invented; the configured trusted HTTPS transport binds the request. Strict refusal is the board’s own policy; it does not redefine intel’s advisory semantics. This pilot intentionally refuses cautious free-tier warnings.
+Preflight uses the existing free `POST /v1/intel/preflight` contract: `resource_name`, `seller_wallet`, `price_usdc`, `chain`, `agent_intent`. The response must say `decision:allow` **or** `decision:warn`, and `can_spend:true`; when the card states a cap (`maximum_recommended_spend_usdc`, else `recommended_cap_usdc`) the reward must not exceed it, or the transition refuses with `preflight_cap_exceeded`. A cap the card does not state is not invented. `block`, `unknown`, any other decision, `can_spend:false`, expired evidence, echoed identity/network/amount mismatch, HTTP failure and parsing errors all refuse. The receipt binds the exact request and response, plus the decision and cap the board acted on. Missing response echoes are not invented; the configured trusted HTTPS transport binds the request.
+
+**Policy change, operator decision 2026-09-10.** The board previously required `decision:allow` outright and refused every warn. Live measurement showed that bar is effectively unreachable: of the 15 seller wallets in the public directory only one earns `allow` (76 settled resources, trust_score 57.9), and a wallet with no corpus history scores 45.0 `unknown_subject` -- the cautious default -- regardless of who controls it. Accepting cap-bounded warn matches intel's own stated semantics, which the preflight response spells out: "decision=warn -> proceed only up to readiness_card.recommended_cap_usdc ...; do not treat warn as refuse on clean counterparties." The board still hard-refuses `block` and `unknown`, still requires `can_spend:true`, and now additionally enforces the stated cap itself rather than trusting `can_spend` alone. This is the board's own policy; it does not redefine intel's advisory semantics, and warn is recorded as warn in the receipt.
 
 The completion receipt is domain-separated as `bounty-completion/v1`, signed with a persistent board Ed25519 key, and binds task hash, full offers, fixed reward, artifact hash/description, accepting actor, measured duration, preflight and settlement status. Operator acceptance attests to a submitted artifact digest; it does not independently prove artifact quality or possession. The accepting poster/operator must review the artifact before calling complete.
 
@@ -63,11 +81,14 @@ Every receipt currently says `settlement.status:not_paid`, `transaction:null`, `
 
 ## Seeds and internal evidence
 
-`node scripts/bounty-internal-loop.mjs` posts three real repository maintenance tasks to a fresh **local fixture board**:
+`node scripts/bounty-internal-loop.mjs` posts four real repository maintenance tasks to a fresh **local fixture board**:
 
 - 0.5 USDC: seller error taxonomy documentation (`src/routes/seller.js`, `src/server.js`, seller route tests).
 - 1 USDC: offline receipt verification and tamper demonstration (`src/receipt.js`, receipt tests).
-- 2 USDC: quote-then-witness failure-handling guide (`README.md`, `src/server.js`, `docs/operator-trial.md`).
+- 1 USDC: quote-then-witness client guide part 1 -- refused quotes and the 402 challenge path (`README.md`, `src/server.js`).
+- 1 USDC: quote-then-witness client guide part 2 -- failed retrieval and offline receipt verification (`src/retrieve.js`, `src/receipt.js`, `docs/operator-trial.md`).
+
+The last two were one 2 USDC task, split on operator decision 2026-09-10: no observable wallet clears a 2 USDC cap. Even the single `allow`-scoring wallet in the directory returns `can_spend:false` at 2 USDC (cap 1.5), so a 2 USDC listing could not pass its own poster gate.
 
 These listings are unfunded. The script acts as the internal client, produces the first Markdown artifact, claims and completes its bounty through actual HTTP, verifies its receipt, retries completion, restarts the store, and claims the next task to verify one accepted delivery on the HTTP card. Local preflight returns an explicitly labeled allow fixture. The seller route is the actual Witness Express route.
 Setting `BOUNTY_SELLER_URL` runs the same loop against a Witness instance in a **separate process** (`seller_out_of_process: true` in the emitted evidence), which is the pilot's real dependency shape:

@@ -28,11 +28,33 @@ test('post and claim consume actual seller HTTP with server-owned histories; com
   assert.equal(claim.body.data.bounty.claim.claimer_card.outcomes.accepted_jobs, 1);
   assert.equal(f.calls.at(-1).body.outcomes.length, 1);
 });
-for (const decision of ['warn', 'block', 'unknown']) test(`${decision} preflight cannot list or complete`, async t => {
+for (const decision of ['block', 'unknown']) test(`${decision} preflight cannot list or complete`, async t => {
   const f = await setup(t), id = await claimed(f); f.state.decision = decision;
   assert.equal((await f.api('/bounties', post(f))).status, 403);
   assert.equal((await f.api(`/bounties/${id}/complete`, completion)).status, 403);
   assert.equal((await f.api(`/bounties/${id}`)).body.data.bounty.status, 'claimed');
+});
+test('warn proceeds only when the gate says can_spend, and only under the cap it returns', async t => {
+  const f = await setup(t);
+  f.state.decision = 'warn';
+  // warn + can_spend is the enrolled case: intel's own semantics are "proceed up to the cap".
+  const listed = await f.api('/bounties', post(f));
+  assert.equal(listed.status, 201);
+  assert.equal(listed.body.data.bounty.preflight.decision, 'warn');
+  // A cautious card that refuses the amount outright still refuses.
+  f.state.canSpend = false;
+  assert.equal((await f.api('/bounties', post(f))).body.error.reason, 'preflight_denied');
+  // can_spend alone does not authorize: a stated cap below the reward refuses.
+  f.state.canSpend = true; f.state.cap = 0.25;
+  assert.equal((await f.api('/bounties', post(f))).body.error.reason, 'preflight_cap_exceeded');
+  // A cap that covers the reward proceeds, and is recorded rather than inferred.
+  f.state.cap = 0.5;
+  const under = await f.api('/bounties', post(f));
+  assert.equal(under.status, 201);
+  assert.equal(under.body.data.bounty.preflight.cap, 0.5);
+  // A non-numeric cap is not a licence to spend.
+  f.state.cap = 'unlimited';
+  assert.equal((await f.api('/bounties', post(f))).body.error.reason, 'preflight_cap_exceeded');
 });
 test('dependency outage and malformed or mismatched preflight fail closed', async t => {
   const f = await setup(t); f.state.sellerStatus = 404;

@@ -79,10 +79,16 @@ export function createBountyApp({ dbPath, keyPath, actors, sellerUrl = 'https://
     const request = { resource_name: `bounty:${id}`, seller_wallet: offer.payout_wallet, price_usdc: amount / 1e6, chain: offer.network, agent_intent: purpose };
     let result; try { result = await postJSON(preflightUrl, request); } catch { fail(503, 'preflight_unavailable'); }
     const c = result?.readiness_card ?? result;
-    if (!object(c) || c.decision !== 'allow' || c.can_spend !== true) fail(403, 'preflight_denied');
+    // Policy (operator, 2026-09-10): allow AND warn may proceed when the gate says can_spend,
+    // bounded by the cap it returns. This mirrors intel's documented semantics -- warn means
+    // "proceed only up to recommended_cap_usdc", not refuse. block/unknown still hard-refuse.
+    if (!object(c) || !['allow', 'warn'].includes(c.decision) || c.can_spend !== true) fail(403, 'preflight_denied');
+    const cap = c.maximum_recommended_spend_usdc ?? c.recommended_cap_usdc;
+    // A cap the card does not state is not invented; a cap it does state is enforced.
+    if (cap !== undefined && !(Number.isFinite(cap) && request.price_usdc <= cap)) fail(403, 'preflight_cap_exceeded');
     if ((c.seller_wallet !== undefined && c.seller_wallet !== request.seller_wallet) || (c.chain !== undefined && c.chain !== request.chain) || (c.price_usdc !== undefined && c.price_usdc !== request.price_usdc)) fail(503, 'preflight_binding_mismatch');
     if (c.expires_at !== undefined && (!Number.isFinite(Date.parse(c.expires_at)) || Date.parse(c.expires_at) <= Date.now())) fail(503, 'preflight_expired');
-    return { request, response: result, checked_at: new Date().toISOString(), mode };
+    return { request, response: result, decision: c.decision, cap: cap ?? null, checked_at: new Date().toISOString(), mode };
   }
   const requireFresh = evidence => {
     const card = evidence.response.readiness_card ?? evidence.response;

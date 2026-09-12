@@ -52,9 +52,10 @@ try {
   const response = await fetch(`${board.url}/bounties`, { method: 'POST', headers: { authorization: `Bearer ${poster.token}`, 'content-type': 'application/json', 'idempotency-key': 'live-dryrun-1' }, body: JSON.stringify({ poster: offerFor(poster, reward), task: { description: 'Document the seller HTTP error taxonomy, including malformed JSON versus wrong-shape offers.' } }) });
   const body = await response.json();
   evidence.board_post = { status: response.status, reason: body?.error?.reason ?? null, listed: body?.success === true };
+  evidence.policy = 'decision in {allow,warn} AND can_spend=true AND reward <= maximum_recommended_spend_usdc';
   evidence.verdict = body?.success === true
-    ? 'listed: live preflight returned allow+can_spend for this wallet'
-    : `refused: ${body?.error?.reason} (board requires decision=allow AND can_spend=true)`;
+    ? `listed: live preflight returned ${evidence.preflight_probe.decision}+can_spend within cap ${evidence.preflight_probe.maximum_recommended_spend_usdc}`
+    : `refused: ${body?.error?.reason} (policy: ${evidence.policy})`;
 } finally {
   await board.close(); app.locals.close(); rmSync(dir, { recursive: true, force: true });
 }

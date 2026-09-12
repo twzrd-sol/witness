@@ -13,14 +13,19 @@
       "source": "src/receipt.js; test/server.test.js"
     },
     {
-      "description": "Write a quote-then-witness client guide covering refused quotes, 402 challenges, failed retrieval and receipt verification.",
-      "reward_minor": 2000000,
-      "source": "README.md; src/server.js; docs/operator-trial.md"
+      "description": "Write the quote-then-witness client guide, part 1: refused quotes and the 402 challenge path.",
+      "reward_minor": 1000000,
+      "source": "README.md; src/server.js"
+    },
+    {
+      "description": "Write the quote-then-witness client guide, part 2: failed retrieval and offline receipt verification.",
+      "reward_minor": 1000000,
+      "source": "src/retrieve.js; src/receipt.js; docs/operator-trial.md"
     }
   ],
   "posted": [
     {
-      "id": "4bb07a1e-09c5-4a59-befd-4df7768078ec",
+      "id": "94799535-14a8-46a5-b023-e35d836707da",
       "status": "open",
       "mode": "internal_fixture",
       "task": {
@@ -72,7 +77,7 @@
       },
       "preflight": {
         "request": {
-          "resource_name": "bounty:4bb07a1e-09c5-4a59-befd-4df7768078ec",
+          "resource_name": "bounty:94799535-14a8-46a5-b023-e35d836707da",
           "seller_wallet": "0x0000000000000000000000000000000000000001",
           "price_usdc": 0.5,
           "chain": "base",
@@ -88,16 +93,18 @@
           },
           "fixture": true
         },
-        "checked_at": "2026-09-10T17:53:43.321Z",
+        "decision": "allow",
+        "cap": null,
+        "checked_at": "2026-09-10T20:33:48.934Z",
         "mode": "internal_fixture"
       },
       "claim": null,
       "outcome": null,
       "completion_receipt": null,
-      "created_at": "2026-09-10T17:53:43.321Z"
+      "created_at": "2026-09-10T20:33:48.934Z"
     },
     {
-      "id": "ff86e14a-4701-45ab-a45f-7fe64852497c",
+      "id": "04c7611f-fd22-4c63-8c0b-53ce91a004ba",
       "status": "open",
       "mode": "internal_fixture",
       "task": {
@@ -149,7 +156,7 @@
       },
       "preflight": {
         "request": {
-          "resource_name": "bounty:ff86e14a-4701-45ab-a45f-7fe64852497c",
+          "resource_name": "bounty:04c7611f-fd22-4c63-8c0b-53ce91a004ba",
           "seller_wallet": "0x0000000000000000000000000000000000000001",
           "price_usdc": 1,
           "chain": "base",
@@ -165,28 +172,30 @@
           },
           "fixture": true
         },
-        "checked_at": "2026-09-10T17:53:43.328Z",
+        "decision": "allow",
+        "cap": null,
+        "checked_at": "2026-09-10T20:33:48.939Z",
         "mode": "internal_fixture"
       },
       "claim": null,
       "outcome": null,
       "completion_receipt": null,
-      "created_at": "2026-09-10T17:53:43.328Z"
+      "created_at": "2026-09-10T20:33:48.939Z"
     },
     {
-      "id": "4db61592-01ae-4d5d-a3c2-2819ad06e96c",
+      "id": "61c530d9-f476-42bb-82df-0cf1b9366312",
       "status": "open",
       "mode": "internal_fixture",
       "task": {
-        "description": "Write a quote-then-witness client guide covering refused quotes, 402 challenges, failed retrieval and receipt verification."
+        "description": "Write the quote-then-witness client guide, part 1: refused quotes and the 402 challenge path."
       },
-      "reward_minor": 2000000,
+      "reward_minor": 1000000,
       "currency": "USDC",
       "poster": {
         "schema_version": "seller-offer/v1",
         "seller_id": "poster",
         "capability": "TWZRD backlog work",
-        "price_minor": 2000000,
+        "price_minor": 1000000,
         "currency": "USDC",
         "network": "base",
         "payout_wallet": "0x0000000000000000000000000000000000000001",
@@ -201,7 +210,7 @@
         "seller_id": "poster",
         "payout_wallet": "0x0000000000000000000000000000000000000001",
         "capability": "TWZRD backlog work",
-        "price_usdc": "2.000000",
+        "price_usdc": "1.000000",
         "currency": "USDC",
         "network": "base",
         "sla_minutes": 60,
@@ -226,9 +235,9 @@
       },
       "preflight": {
         "request": {
-          "resource_name": "bounty:4db61592-01ae-4d5d-a3c2-2819ad06e96c",
+          "resource_name": "bounty:61c530d9-f476-42bb-82df-0cf1b9366312",
           "seller_wallet": "0x0000000000000000000000000000000000000001",
-          "price_usdc": 2,
+          "price_usdc": 1,
           "chain": "base",
           "agent_intent": "list bounty"
         },
@@ -238,17 +247,98 @@
             "can_spend": true,
             "seller_wallet": "0x0000000000000000000000000000000000000001",
             "chain": "base",
-            "price_usdc": 2
+            "price_usdc": 1
           },
           "fixture": true
         },
-        "checked_at": "2026-09-10T17:53:43.333Z",
+        "decision": "allow",
+        "cap": null,
+        "checked_at": "2026-09-10T20:33:48.946Z",
         "mode": "internal_fixture"
       },
       "claim": null,
       "outcome": null,
       "completion_receipt": null,
-      "created_at": "2026-09-10T17:53:43.333Z"
+      "created_at": "2026-09-10T20:33:48.946Z"
+    },
+    {
+      "id": "087a63c6-94f2-47ce-80a8-0eb49aa57c30",
+      "status": "open",
+      "mode": "internal_fixture",
+      "task": {
+        "description": "Write the quote-then-witness client guide, part 2: failed retrieval and offline receipt verification."
+      },
+      "reward_minor": 1000000,
+      "currency": "USDC",
+      "poster": {
+        "schema_version": "seller-offer/v1",
+        "seller_id": "poster",
+        "capability": "TWZRD backlog work",
+        "price_minor": 1000000,
+        "currency": "USDC",
+        "network": "base",
+        "payout_wallet": "0x0000000000000000000000000000000000000001",
+        "sla_minutes": 60,
+        "deliverable": {
+          "description": "Reviewed Markdown artifact",
+          "mime_type": "text/markdown"
+        }
+      },
+      "poster_card": {
+        "schema_version": "seller-card/v1",
+        "seller_id": "poster",
+        "payout_wallet": "0x0000000000000000000000000000000000000001",
+        "capability": "TWZRD backlog work",
+        "price_usdc": "1.000000",
+        "currency": "USDC",
+        "network": "base",
+        "sla_minutes": 60,
+        "deliverable": {
+          "description": "Reviewed Markdown artifact",
+          "mime_type": "text/markdown"
+        },
+        "outcomes": {
+          "completed_jobs": 0,
+          "accepted_jobs": 0,
+          "approval_rate": null,
+          "refunded_jobs": 0,
+          "refund_rate": null,
+          "median_delivery_minutes": null
+        },
+        "evidence_url": null,
+        "evidence_status": "none"
+      },
+      "payment_history": {
+        "paid_jobs": null,
+        "payment_rate": null
+      },
+      "preflight": {
+        "request": {
+          "resource_name": "bounty:087a63c6-94f2-47ce-80a8-0eb49aa57c30",
+          "seller_wallet": "0x0000000000000000000000000000000000000001",
+          "price_usdc": 1,
+          "chain": "base",
+          "agent_intent": "list bounty"
+        },
+        "response": {
+          "readiness_card": {
+            "decision": "allow",
+            "can_spend": true,
+            "seller_wallet": "0x0000000000000000000000000000000000000001",
+            "chain": "base",
+            "price_usdc": 1
+          },
+          "fixture": true
+        },
+        "decision": "allow",
+        "cap": null,
+        "checked_at": "2026-09-10T20:33:48.951Z",
+        "mode": "internal_fixture"
+      },
+      "claim": null,
+      "outcome": null,
+      "completion_receipt": null,
+      "created_at": "2026-09-10T20:33:48.951Z"
     }
   ]
 }

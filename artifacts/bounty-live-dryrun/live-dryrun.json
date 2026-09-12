@@ -5,7 +5,7 @@
   "transfers": 0,
   "seller_url": "http://127.0.0.1:4042/seller/offer/validate",
   "preflight_url": "https://intel.twzrd.xyz/v1/intel/preflight",
-  "checked_at": "2026-09-10T17:53:11.432Z",
+  "checked_at": "2026-09-10T20:34:19.736Z",
   "seller_probe": {
     "status": 200,
     "seller_card": {
@@ -46,7 +46,7 @@
     ],
     "recommended_action": "proceed_with_cap",
     "maximum_recommended_spend_usdc": 0.1,
-    "expires_at": "2026-09-13T17:53:12Z",
+    "expires_at": "2026-09-13T20:34:09Z",
     "echo": {
       "seller_wallet": "0x0000000000000000000000000000000000000001",
       "chain": null,
@@ -64,5 +64,6 @@
     "reason": "preflight_denied",
     "listed": false
   },
-  "verdict": "refused: preflight_denied (board requires decision=allow AND can_spend=true)"
+  "policy": "decision in {allow,warn} AND can_spend=true AND reward <= maximum_recommended_spend_usdc",
+  "verdict": "refused: preflight_denied (policy: decision in {allow,warn} AND can_spend=true AND reward <= maximum_recommended_spend_usdc)"
 }
