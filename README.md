@@ -22,6 +22,10 @@ Not Firecrawl. Not intel device-witness. Not a directory.
 
 Success: one **foreign** agent buys twice. Listing in five registries is not success.
 
+Operator proof (issue #1): the sanitized twice-pay evidence bundle format is
+[`docs/OPERATOR-PROOF.md`](docs/OPERATOR-PROOF.md); check any bundle offline
+with `node scripts/verify-proof.mjs evidence.json --pubkey <base64>`.
+
 ## Current coordination notes
 
 - Chief driver hardening lives in `/home/twzrd/agent-bus/bin/chief-driver.sh`: the systemd

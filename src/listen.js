@@ -6,6 +6,7 @@ import { privateKeyToAccount } from "viem/accounts";
 import { wrapFetchWithPayment } from "@x402/fetch";
 import { createApp, witnessAccepts } from "./server.js";
 import { makeRetrieve } from "./retrieve.js";
+import { makeFetchIntel } from "./intel-evidence.js";
 import { openapiDoc } from "./openapi.js";
 
 const METHOD_DOC = JSON.stringify({
@@ -23,13 +24,16 @@ Allow: /pubkey
 Allow: /llms.txt
 Allow: /skill.md
 Allow: /.well-known/
+Allow: /verify/payout/quote
 Disallow: /witness
+Disallow: /verify/payout
 `;
 
 const PRICE = `{"url":"https://api.coinbase.com/v2/prices/BTC-USD/spot","extract":{"amount":"number"},"assertion":"amount < 1000000","replicas":1}`;
 const STOCK = `{"url":"https://dummyjson.com/products/1","extract":{"stock":"number"},"assertion":"stock < 100000","replicas":1}`;
 const RELEASE = `{"url":"https://pypi.org/pypi/requests/json","extract":{"version":"string"},"replicas":1}`;
 const CLAIM = `{"url":"https://jsonplaceholder.typicode.com/todos/1","extract":{"userId":"number"},"assertion":"userId < 100","replicas":1}`;
+const PAYOUT = `{"claim_url":"https://deskcrew.io/api/arena/contests","claim":{"payout_count":"decidedCount","unique_wallets":"uniqueWallets","paid_usd":"sentUsd"},"wallet":"0xB075aA8206D6De88EDEeD0eE4015a1a33D3659D8","network":"base","direction":"inbound"}`;
 
 const LLMS = `# witness
 
@@ -47,7 +51,7 @@ A claim we cannot read is never priced: a malformed assertion, or one naming a f
 - GET /pubkey — ed25519 key (receipts are signed over deep canonical JSON, 1h validity).
 - GET /observatory — verified receipts; contradictions and expiry are visible.
 - GET /.well-known/x402 — payment descriptor for POST /witness.
-- GET /openapi.json — OpenAPI 3.1 for POST /quote, POST /witness, and POST /delivery/attest.
+- GET /openapi.json — OpenAPI 3.1 for POST /quote, POST /witness, POST /delivery/attest, and POST /verify/payout.
 
 Quote first. A 200 quote is worth paying whatever verdict it announces — contradicted and incomplete are answers you asked for.
 - Change Proof: hold a prior receipt? POST /quote again with prior_receipt = that 200 body; the quote answers changed (true/false), previous_source_hash, and source_hash before you pay. Pay POST /witness with the same body for a signed delta receipt.
@@ -86,6 +90,19 @@ Public record present (JSONPlaceholder todo #1):
 ${CLAIM}
 \`\`\`
 
+## Payout-claim verification ($0.05)
+
+Does a public payout or revenue figure match what TWZRD's x402 settlement corpus observed for a wallet?
+
+- POST /verify/payout/quote — free. 200 announces the verdict: supported, discrepant, coverage_limited, or incomplete. 422 = not deliverable, nothing billed.
+- POST /verify/payout — same body + x402 ($0.05 USDC). Signed receipt naming the claim page hash, the intel responses (URL + sha256), every finding, and the coverage scope.
+
+\`\`\`json
+${PAYOUT}
+\`\`\`
+
+\`claim\` maps each figure to the page's own key. \`direction\` inbound reads the wallet as a seller (settlements received, distinct counterparties, USDC received); outbound reads it as an x402 payer and can only confirm a floor — plain transfers are invisible to the corpus, so a shortfall there is coverage_limited, never discrepant. The corpus is an observed subset of x402 settlements, not a universe claim.
+
 Docs: /skill.md
 `;
 
@@ -122,6 +139,13 @@ contradict it. \`GET /observatory\` renders every verified receipt.
 
 Assertion grammar: \`"<key> <op> <literal>"\` — numeric ==, <, <=, >, >=; string == with quoted literals; \`"<key> exists"\`.
 
+Payout-claim verification ($0.05): \`POST /verify/payout/quote\` (free) then
+\`POST /verify/payout\` with the same body. Body: claim_url, claim (figure ->
+page key), wallet, network (solana|base), direction (inbound|outbound). The
+receipt states supported / discrepant / coverage_limited / incomplete against
+TWZRD's observed x402 settlement corpus, with the evidence hashes it was built
+from. coverage_limited is an answer about the corpus, not a contradiction.
+
 Key: GET /pubkey · Payment: GET /.well-known/x402 · Methods: GET /llms.txt
 `;
 
@@ -141,10 +165,10 @@ export function readerPayment(env, readerFetch) {
   return { paymentsEnabled: true, payFetch: wrapFetchWithPayment(readerFetch ?? globalThis.fetch, client) };
 }
 
-export function createHostApp(env = process.env, { readerFetch, probeFetch, gateTtlMs, attest, importModel } = {}) {
+export function createHostApp(env = process.env, { readerFetch, probeFetch, gateTtlMs, attest, importModel, intelFetch } = {}) {
   const base = env.PUBLIC_BASE_URL || "https://witness.outbid.sh";
   const paywall = { evmAddress: env.EVM_ADDRESS, svmAddress: env.SVM_ADDRESS };
-  const app = createApp({ paywall, facilitatorUrl: env.FACILITATOR_URL, publicBaseUrl: base, observationsDir: env.OBSERVATIONS_DIR || "data", retrieve: makeRetrieve({ fetch: readerFetch, ...readerPayment(env, readerFetch) }), probeFetch, gateTtlMs, quoteRateLimit: env.QUOTE_RATE_LIMIT_PER_MINUTE, quoteGlobalRateLimit: env.QUOTE_RATE_LIMIT_GLOBAL_PER_MINUTE, attestRateLimit: env.ATTEST_RATE_LIMIT_PER_MINUTE, attest, importModel });
+  const app = createApp({ paywall, facilitatorUrl: env.FACILITATOR_URL, publicBaseUrl: base, observationsDir: env.OBSERVATIONS_DIR || "data", retrieve: makeRetrieve({ fetch: readerFetch, ...readerPayment(env, readerFetch) }), probeFetch, gateTtlMs, quoteRateLimit: env.QUOTE_RATE_LIMIT_PER_MINUTE, quoteGlobalRateLimit: env.QUOTE_RATE_LIMIT_GLOBAL_PER_MINUTE, attestRateLimit: env.ATTEST_RATE_LIMIT_PER_MINUTE, attest, importModel, fetchIntel: makeFetchIntel({ fetch: intelFetch }) });
   app.get("/openapi.json", (_q, res) => res.json(openapiDoc(env)));
   const text = (res, body, type = "text/plain") => res.type(type).send(body);
   app.get("/robots.txt", (_q, res) => text(res, ROBOTS));
@@ -158,7 +182,10 @@ export function createHostApp(env = process.env, { readerFetch, probeFetch, gate
     name: "witness", url: base, version: "0.1.0",
     description: "Paid, attributable, perishable observation of public web facts over x402.",
     capabilities: { streaming: false, pushNotifications: false },
-    skills: [{ id: "observe", name: "Observe", description: "POST /quote once, then POST /witness twice with the same body; $0.02 USDC; two signed receipts.", tags: ["observation", "x402", "receipt"] }],
+    skills: [
+      { id: "observe", name: "Observe", description: "POST /quote once, then POST /witness twice with the same body; $0.02 USDC; two signed receipts.", tags: ["observation", "x402", "receipt"] },
+      { id: "verify-payout", name: "Verify payout claim", description: "POST /verify/payout/quote (free), then POST /verify/payout with the same body; $0.05 USDC; signed receipt holding a public payout figure against TWZRD's x402 settlement corpus.", tags: ["verification", "x402", "receipt"] },
+    ],
   };
   app.get("/.well-known/agent.json", (_q, res) => res.json(card));
   return app;
@@ -189,6 +216,13 @@ export function start(env = process.env) {
   const host = env.HOST || "127.0.0.1";
   const port = Number(env.PORT || 4032);
   const server = createHostApp(env).listen(port, host, () => console.log(`witness listening on http://${host}:${port}`));
+  // Express 5's listen no longer turns a bound port into an uncaught exception;
+  // without this handler the process has nothing on the event loop and exits 0,
+  // which systemd Restart=on-failure reads as a clean stop.
+  server.on("error", (e) => {
+    console.error("witness: listen error — exiting 1 for systemd to restart", e && (e.stack || e.message || e));
+    process.exit(1);
+  });
   return server;
 }
 

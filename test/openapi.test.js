@@ -68,7 +68,7 @@ test("GET /openapi.json serves the doc on the host surface", async () => {
     assert.equal(res.status, 200);
     const served = await res.json();
     assert.equal(served.servers[0].url, "https://witness.outbid.sh", "canonical origin even without env");
-    assert.deepEqual(Object.keys(served.paths).sort(), ["/.well-known/agent.json", "/.well-known/x402", "/api/offers", "/api/offers/{id}", "/api/offers/{id}/task.json", "/api/quotes", "/delivery/attest", "/llms.txt", "/observatory", "/offers/{id}", "/openapi.json", "/pubkey", "/quote", "/skill.md", "/witness"]);
+    assert.deepEqual(Object.keys(served.paths).sort(), ["/.well-known/agent.json", "/.well-known/x402", "/api/offers", "/api/offers/{id}", "/api/offers/{id}/task.json", "/api/quotes", "/delivery/attest", "/llms.txt", "/observatory", "/offers/{id}", "/openapi.json", "/pubkey", "/quote", "/skill.md", "/verify/payout", "/verify/payout/quote", "/witness"]);
     assert.ok(served.paths["/api/quotes"].post, "quote/checkout endpoint is documented on the host surface");
     assert.deepEqual(served.paths["/api/quotes"].post.security, [], "quote/checkout endpoint is explicitly public");
     assert.ok(served.paths["/offers/{id}"].get, "offer page is documented on the host surface");
