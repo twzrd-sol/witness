@@ -120,7 +120,8 @@ export const PARENT_STATIC_REASONS = Object.freeze([
 export const CARD_METHOD = GATE_METHOD;
 
 const REASON_LITERAL = /reason\s*[:=]\s*["']([a-z][a-z0-9_]*)["']/g;
-const RECEIPT_PROP = /receipt\.([a-z_]+)/g;
+/** Property access only — do not match `../src/receipt.js`. */
+const RECEIPT_PROP = /(?<![\w./])receipt\.([a-z_]+)/g;
 
 export function reasonsInSource(src) {
   return unique([...src.matchAll(REASON_LITERAL)].map((m) => m[1])).sort();
