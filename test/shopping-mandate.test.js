@@ -13,6 +13,8 @@ import {
   RAIL,
   SIGNING_DOMAIN,
   MANDATE_JSON_SCHEMA,
+  STORE_URL_ENV,
+  STORE_URL_JSON_SCHEMA,
   DONE_PREDICATES,
   validateMandate,
   signMandate,
@@ -20,6 +22,7 @@ import {
   resourceScopeAllows,
   isHumanCheckoutQuote,
   bindMandateToQuote,
+  resolveStoreUrl,
   evaluateDone,
 } from "../src/shopping-mandate.js";
 
@@ -30,12 +33,26 @@ const EXAMPLE = JSON.parse(
 const SCHEMA_FILE = JSON.parse(
   readFileSync(path.join(ROOT, "docs/consumer/schemas/shopping-mandate-v1.json"), "utf8"),
 );
+const STORE_URL_SCHEMA_FILE = JSON.parse(
+  readFileSync(path.join(ROOT, "docs/consumer/schemas/shopify-store-url-env-v1.json"), "utf8"),
+);
 const SRC = readFileSync(path.join(ROOT, "src/shopping-mandate.js"), "utf8");
 const MERCHANT_ID = "pixel-surplus-vintage-polaroid";
 const X402_ID = "outbid-reader-scrape";
 
 const ajv = new Ajv({ strict: false, validateFormats: false });
 const ajvOk = ajv.compile(SCHEMA_FILE);
+const ajvStore = ajv.compile(STORE_URL_SCHEMA_FILE);
+
+function isolateStoreEnv(t, value) {
+  const prev = process.env.SHOPIFY_STORE_URL;
+  if (value === undefined) delete process.env.SHOPIFY_STORE_URL;
+  else process.env.SHOPIFY_STORE_URL = value;
+  t.after(() => {
+    if (prev === undefined) delete process.env.SHOPIFY_STORE_URL;
+    else process.env.SHOPIFY_STORE_URL = prev;
+  });
+}
 
 function mechanicalCheck() {
   return {
@@ -270,8 +287,10 @@ test("human-checkout catalog and handleOfferQuote stay mandate-free", async (t) 
   assert.equal(quote.json.authorization, undefined);
 });
 
-test("mandate module never names a Shopify storefront host", () => {
-  assert.doesNotMatch(SRC, /myshopify|pixelsurplus|shopify/i);
+test("mandate module wires SHOPIFY_STORE_URL and never names a storefront host", () => {
+  assert.match(SRC, /SHOPIFY_STORE_URL/);
+  assert.doesNotMatch(SRC, /myshopify|pixelsurplus/i);
+  assert.equal(STORE_URL_ENV, "SHOPIFY_STORE_URL");
 });
 
 test("evaluateDone and bindMandateToQuote never fetch", (t) => {
@@ -283,15 +302,123 @@ test("evaluateDone and bindMandateToQuote never fetch", (t) => {
     mandate,
     quote: { status: 200, body: x402QuoteBody() },
     check: mechanicalCheck(),
-  }, { issuerPublicKey: key.publicKey, now: Date.parse("2026-09-12T12:00:00Z") });
+  }, { issuerPublicKey: key.publicKey, now: Date.parse("2026-09-12T12:00:00Z"), env: {} });
   assert.equal(done.completion, "complete");
 });
 
 test("empty bundle is incomplete on every required predicate class", () => {
-  const done = evaluateDone(null, {});
+  const done = evaluateDone(null, { env: {} });
   assert.equal(done.completion, "incomplete");
   assert.equal(done.checkout_approved, false);
   for (const p of ["mandate_schema", "mandate_signature", "mandate_fresh", "receipt_check", "quote_passed", "amount_in_budget"]) {
     assert.ok(done.failed.includes(p), p);
   }
+});
+
+test("store-url env schema accepts unset, configured, and invalid resolver results", () => {
+  assert.deepEqual(STORE_URL_JSON_SCHEMA, STORE_URL_SCHEMA_FILE);
+  assert.equal(STORE_URL_SCHEMA_FILE.additionalProperties, false);
+  assert.ok(ajvStore({ ok: true, enabled: false, store_url: null, reason: "store_url_unset" }));
+  assert.ok(ajvStore({
+    ok: true, enabled: true, store_url: "https://merchant.example", reason: "store_url_configured",
+  }));
+  assert.ok(ajvStore({ ok: false, enabled: false, store_url: null, reason: "store_url_invalid" }));
+  assert.equal(ajvStore({ ok: true, enabled: true, store_url: "https://merchant.example", reason: "fetched" }), false);
+  assert.equal(ajvStore({ ok: true, enabled: false, store_url: null, reason: "store_url_unset", cart_url: "x" }), false);
+});
+
+test("resolveStoreUrl no-ops when SHOPIFY_STORE_URL is unset, empty, or whitespace", (t) => {
+  t.mock.method(globalThis, "fetch", () => { throw new Error("store URL resolver must not fetch"); });
+  for (const env of [{}, { SHOPIFY_STORE_URL: "" }, { SHOPIFY_STORE_URL: "   " }, { SHOPIFY_STORE_URL: "\n" }]) {
+    const resolved = resolveStoreUrl(env);
+    assert.equal(resolved.ok, true, JSON.stringify(env));
+    assert.equal(resolved.enabled, false);
+    assert.equal(resolved.store_url, null);
+    assert.equal(resolved.reason, "store_url_unset");
+    assert.ok(ajvStore(resolved));
+  }
+});
+
+test("resolveStoreUrl fail-closes on a set but invalid store URL and does not fetch", (t) => {
+  t.mock.method(globalThis, "fetch", () => { throw new Error("invalid store URL must not fetch"); });
+  for (const raw of [
+    "http://merchant.example",
+    "https://user:pass@merchant.example",
+    "not-a-url",
+    "ftp://merchant.example",
+    "https://",
+  ]) {
+    const resolved = resolveStoreUrl({ SHOPIFY_STORE_URL: raw });
+    assert.equal(resolved.ok, false, raw);
+    assert.equal(resolved.enabled, false);
+    assert.equal(resolved.store_url, null);
+    assert.equal(resolved.reason, "store_url_invalid");
+    assert.ok(ajvStore(resolved));
+  }
+});
+
+test("resolveStoreUrl records a valid https store URL without fetching", (t) => {
+  t.mock.method(globalThis, "fetch", () => { throw new Error("configured store URL must not fetch"); });
+  const resolved = resolveStoreUrl({ SHOPIFY_STORE_URL: "  https://merchant.example/shop  " });
+  assert.equal(resolved.ok, true);
+  assert.equal(resolved.enabled, true);
+  assert.equal(resolved.store_url, "https://merchant.example/shop");
+  assert.equal(resolved.reason, "store_url_configured");
+  assert.ok(ajvStore(resolved));
+});
+
+test("evaluateDone no-ops when SHOPIFY_STORE_URL is unset in process.env", (t) => {
+  isolateStoreEnv(t, undefined);
+  t.mock.method(globalThis, "fetch", () => { throw new Error("unset store URL must not fetch"); });
+  const { bundle, opts } = happyBundle(t);
+  const done = evaluateDone(bundle, opts);
+  assert.equal(done.completion, "complete");
+  assert.equal(done.checkout_approved, true);
+  assert.equal(done.store.enabled, false);
+  assert.equal(done.store.reason, "store_url_unset");
+  assert.equal(done.store.env, STORE_URL_ENV);
+  assert.equal(done.failed.includes("store_url"), false);
+});
+
+test("evaluateDone stays complete when a valid SHOPIFY_STORE_URL is set and still does not fetch", (t) => {
+  isolateStoreEnv(t, "https://merchant.example");
+  t.mock.method(globalThis, "fetch", () => { throw new Error("set store URL must not fetch"); });
+  const { bundle, opts } = happyBundle(t);
+  const done = evaluateDone(bundle, { ...opts, env: { SHOPIFY_STORE_URL: "https://merchant.example" } });
+  assert.equal(done.completion, "complete");
+  assert.equal(done.store.enabled, true);
+  assert.equal(done.store.reason, "store_url_configured");
+  assert.equal(done.store.store_url, undefined);
+});
+
+test("invalid SHOPIFY_STORE_URL is reported and is not a Done predicate", (t) => {
+  const { bundle, opts } = happyBundle(t);
+  const done = evaluateDone(bundle, { ...opts, env: { SHOPIFY_STORE_URL: "http://merchant.example" } });
+  assert.equal(done.completion, "complete");
+  assert.equal(done.store.enabled, false);
+  assert.equal(done.store.reason, "store_url_invalid");
+  assert.equal(done.failed.includes("store_url"), false);
+});
+
+test("a configured store URL cannot complete a human-checkout quote", (t) => {
+  const { bundle, opts } = happyBundle(t);
+  const merchantBody = {
+    offer_id: MERCHANT_ID,
+    rail: "merchant_checkout",
+    merchant: "Pixel Surplus",
+    checkout: "merchant_hosted",
+    checkout_url: OFFERS[MERCHANT_ID].cart_url,
+    cart: { items: [{ variant_id: OFFERS[MERCHANT_ID].variant_id, quantity: 1 }] },
+    gate: { status: "passed", reason: "verdict_supported" },
+    price: { amount_atomic: "600", asset: "USD" },
+    accepts: [{ payTo: EXAMPLE.payee, network: EXAMPLE.network, asset: EXAMPLE.asset }],
+    request: { url: EXAMPLE.resource_url },
+  };
+  const done = evaluateDone(
+    { ...bundle, quote: { status: 200, body: merchantBody } },
+    { ...opts, env: { SHOPIFY_STORE_URL: "https://merchant.example" } },
+  );
+  assert.equal(done.completion, "incomplete");
+  assert.ok(done.failed.includes("human_checkout_untouched"));
+  assert.equal(done.store.enabled, true);
 });

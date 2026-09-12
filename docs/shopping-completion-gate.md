@@ -78,8 +78,9 @@ npm test
 git diff --check
 ```
 
-The mandate-bound digital-product Done-gate (no store URL; human checkout
-untouched) is documented in `docs/consumer/shopping-mandate.md`.
+The mandate-bound digital-product Done-gate (no store URL required;
+`SHOPIFY_STORE_URL` no-ops until set; human checkout untouched) is documented
+in `docs/consumer/shopping-mandate.md`.
 
 Tests use ephemeral signing keys and local fixtures. They exercise the live
 control path with payment transport replaced, real child verification, tampering,

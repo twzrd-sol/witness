@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://witness.outbid.sh/schemas/shopify-store-url-env-v1.json",
+  "title": "SHOPIFY_STORE_URL env resolution (digital-product pilot)",
+  "description": "Result of reading SHOPIFY_STORE_URL. Unset or blank is a no-op: the mandate/Done path does not require a storefront. A set value is validated as https with no userinfo and is never fetched. This is operator env, not a mandate field — store_url on the signed document remains rejected.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["ok", "enabled", "store_url", "reason"],
+  "properties": {
+    "ok": {
+      "type": "boolean",
+      "description": "false only when the env is set and the value is not a usable https URL."
+    },
+    "enabled": {
+      "type": "boolean",
+      "description": "true only when a valid https store URL is configured. Never implies a live call."
+    },
+    "store_url": {
+      "type": ["string", "null"],
+      "description": "Trimmed https URL when configured; otherwise null. Invalid values are not echoed."
+    },
+    "reason": {
+      "type": "string",
+      "enum": ["store_url_unset", "store_url_configured", "store_url_invalid"]
+    }
+  }
+}
