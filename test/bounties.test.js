@@ -1,8 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
-import os from "node:os";
-import path from "node:path";
+import { tempDir } from "./helpers/tmpdir.js";
 import {
   bountyState,
   handleClaimBounty,
@@ -113,7 +111,7 @@ test("fold ignores out-of-order and unknown events; get reads one record", () =>
 });
 
 test("HTTP round-trip: post → claim → complete → get, state survives per-request refold", async () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "wit-bounty-"));
+  const dir = tempDir("wit-bounty-");
   const app = createApp({ key: generateProcessKey(), retrieve: async () => ({ text: "x" }), observationsDir: dir, bountiesDir: dir });
   const server = app.listen(0, "127.0.0.1");
   await new Promise((r) => server.once("listening", r));
@@ -150,7 +148,7 @@ test("HTTP round-trip: post → claim → complete → get, state survives per-r
 });
 
 test("concurrent claims: exactly one winner, the loser is 409", async () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "wit-bounty-race-"));
+  const dir = tempDir("wit-bounty-race-");
   const app = createApp({ key: generateProcessKey(), retrieve: async () => ({ text: "x" }), observationsDir: dir, bountiesDir: dir });
   const server = app.listen(0, "127.0.0.1");
   await new Promise((r) => server.once("listening", r));
@@ -179,7 +177,7 @@ test("concurrent claims: exactly one winner, the loser is 409", async () => {
 });
 
 test("withBountyLock serializes overlapping writers", async () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "wit-bounty-lock-"));
+  const dir = tempDir("wit-bounty-lock-");
   const order = [];
   await Promise.all([
     Promise.resolve().then(async () => {

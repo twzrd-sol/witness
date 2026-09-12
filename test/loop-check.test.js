@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync, readFileSync } from "node:fs";
-import os from "node:os";
+import { writeFileSync, readFileSync } from "node:fs";
 import path from "node:path";
+import { tempDir } from "./helpers/tmpdir.js";
 
 import { createHostApp } from "../src/listen.js";
 import { attest } from "../src/delivery.js";
@@ -59,7 +59,7 @@ function verifierFetch(base, tx, { attestTx = undefined, hostAccepts = null } = 
 }
 
 async function withHost(fn) {
-  const server = createHostApp({ OBSERVATIONS_DIR: mkdtempSync(path.join(os.tmpdir(), "wit-loop-")) }, { probeFetch, attest }).listen(0, "127.0.0.1");
+  const server = createHostApp({ OBSERVATIONS_DIR: tempDir("wit-loop-") }, { probeFetch, attest }).listen(0, "127.0.0.1");
   await new Promise((r) => server.once("listening", r));
   try {
     return await fn(`http://127.0.0.1:${server.address().port}`);
@@ -70,7 +70,7 @@ async function withHost(fn) {
 
 /** Assemble a run dir exactly as the actor writes it, with the paid call faked. */
 async function buildRun(base, { artifact = ARTIFACT, settlementSig = SIG, attestSig = null, mutate = () => {} } = {}) {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "wit-run-"));
+  const dir = tempDir("wit-run-");
   const write = (name, v) => writeFileSync(path.join(dir, name), JSON.stringify(v, null, 2));
   const quoteRes = await fetch(`${base}/api/quotes`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ offer_id: OFFER.id, input: { url: "https://example.com" } }) });
   const quote = await quoteRes.json();
@@ -131,7 +131,7 @@ test("on a paywalled host the attestation's own settlement must be on chain to t
 });
 
 test("INCOMPLETE is the default: an empty run dir fails every predicate and is not done", async () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "wit-empty-"));
+  const dir = tempDir("wit-empty-");
   const result = await checkRun(dir, { fetch: async () => { throw new Error("no network"); }, rpc: "rpc://fake", base: "http://127.0.0.1:1" });
   assert.equal(result.done, false);
   assert.equal(result.failed.length, 11);
@@ -205,7 +205,7 @@ test("a receipt bound to a different settlement than the chain shows is INCOMPLE
 });
 
 test("the ledger scores predicate pass rate, not recap quality", async () => {
-  const ledger = path.join(mkdtempSync(path.join(os.tmpdir(), "wit-ledger-")), "ledger.ndjson");
+  const ledger = path.join(tempDir("wit-ledger-"), "ledger.ndjson");
   record("run-a", { done: true, failed: [] }, ledger);
   record("run-b", { done: false, failed: ["settlement_on_chain"] }, ledger);
   record("run-c", { done: false, failed: ["spec_holds", "verdict_delivered"] }, ledger);

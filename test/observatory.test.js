@@ -1,8 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert";
-import { mkdtempSync } from "node:fs";
-import os from "node:os";
-import path from "node:path";
+import { tempDir } from "./helpers/tmpdir.js";
 import { generateProcessKey, signReceipt, verifyReceipt } from "../src/receipt.js";
 import {
   appendObservation,
@@ -43,7 +41,7 @@ test("comparator derives the five star states mechanically", () => {
 
 test("paid-shaped receipts append, verify with process key, and skip junk", () => {
   const key = generateProcessKey();
-  const dir = mkdtempSync(path.join(os.tmpdir(), "wit-"));
+  const dir = tempDir("wit-");
   const spec = methodFromRequest({ url: "https://example.com/pricing", extract: { starter_price: "number" }, assertion: "starter_price < 100" });
   const observed_at = "2026-08-30T00:00:00.000Z";
   const rest = {
@@ -74,7 +72,7 @@ test("paid-shaped receipts append, verify with process key, and skip junk", () =
 
 test("paid contradiction: same method, different vantage + value, both unexpired -> flare (contradicted)", () => {
   const key = generateProcessKey();
-  const dir = mkdtempSync(path.join(os.tmpdir(), "wit-"));
+  const dir = tempDir("wit-");
   const spec = methodFromRequest({ url: "https://example.com/pricing", extract: { starter_price: "number" }, assertion: "starter_price < 100" });
   const observed_at = "2026-08-30T00:00:00.000Z";
   const base = {

@@ -1,8 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert";
-import { mkdtempSync } from "node:fs";
-import os from "node:os";
-import path from "node:path";
+import { tempDir } from "./helpers/tmpdir.js";
 import { generateProcessKey } from "../src/receipt.js";
 import { compareReceipts, readObservations, specHash } from "../src/observatory.js";
 import { handleWitness } from "../src/server.js";
@@ -20,7 +18,7 @@ const BODY = { url: METHOD.url, extract: METHOD.extract, assertion: METHOD.asser
 
 test("twice-pay: two paid receipts for one PLAN method group into one card", async () => {
   const key = generateProcessKey();
-  const dir = mkdtempSync(path.join(os.tmpdir(), "wit-2x-"));
+  const dir = tempDir("wit-2x-");
   const retrieve = async () => ({ text: FIXTURE });
 
   const first = await handleWitness(BODY, { retrieve, paid: true, key, observationsDir: dir, now: () => "2026-08-30T15:00:00.000Z" });

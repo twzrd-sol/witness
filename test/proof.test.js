@@ -1,10 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { tempDir } from "./helpers/tmpdir.js";
 import { generateProcessKey, pubkeyB64, signReceipt, sourceHash } from "../src/receipt.js";
 import { methodFromRequest, specHash, VALID_FOR_MS } from "../src/observatory.js";
 import { verifyProof } from "../scripts/verify-proof.mjs";
@@ -104,7 +104,7 @@ test("no pubkey supplied -> signatures unchecked but structure still validated",
 
 test("CLI: exit 0 on valid bundle, exit 1 on invalid", () => {
   const key = generateProcessKey();
-  const dir = mkdtempSync(path.join(os.tmpdir(), "proof-"));
+  const dir = tempDir("proof-");
   const good = path.join(dir, "good.json");
   const bad = path.join(dir, "bad.json");
   const bundle = makeBundle(key);

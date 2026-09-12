@@ -1,9 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
-import os from "node:os";
-import path from "node:path";
 import { createPublicKey, verify } from "node:crypto";
+import { tempDir } from "./helpers/tmpdir.js";
 
 import { createHostApp } from "../src/listen.js";
 import { openapiDoc } from "../src/openapi.js";
@@ -50,7 +48,7 @@ function fakeAttest({ verdict = "delivered", reasons = [], downgrade = false, re
 }
 
 async function withServer(fn, { attest, importModel } = {}) {
-  const server = createHostApp({ OBSERVATIONS_DIR: mkdtempSync(path.join(os.tmpdir(), "wit-delivery-")) }, { attest, importModel }).listen(0, "127.0.0.1");
+  const server = createHostApp({ OBSERVATIONS_DIR: tempDir("wit-delivery-") }, { attest, importModel }).listen(0, "127.0.0.1");
   await new Promise((resolve) => server.once("listening", resolve));
   try {
     return await fn(`http://127.0.0.1:${server.address().port}`);
@@ -304,7 +302,7 @@ test("openapi documents /delivery/attest: public, BARE receipt, every reason dis
 test("the receipt the route serves verifies with the library's own offline verifier, not only a hand-rolled check", async () => {
   // Before signer rode in the signed body, verifyDelivery refused every receipt the live
   // route issued (signer_mismatch) while examples verified with their own reimplementation.
-  const server = createHostApp({ OBSERVATIONS_DIR: mkdtempSync(path.join(os.tmpdir(), "wit-verify-")) }, { attest: realAttest }).listen(0, "127.0.0.1");
+  const server = createHostApp({ OBSERVATIONS_DIR: tempDir("wit-verify-") }, { attest: realAttest }).listen(0, "127.0.0.1");
   await new Promise((r) => server.once("listening", r));
   try {
     const base = `http://127.0.0.1:${server.address().port}`;

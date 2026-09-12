@@ -10,9 +10,7 @@
  */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
-import os from "node:os";
-import path from "node:path";
+import { tempDir } from "./helpers/tmpdir.js";
 
 import { createApp } from "../src/server.js";
 import { createHostApp } from "../src/listen.js";
@@ -60,7 +58,7 @@ async function serve(app, fn) {
 }
 
 const paywalled = (attest) =>
-  createApp({ key: generateProcessKey(), observationsDir: mkdtempSync(path.join(os.tmpdir(), "wit-attest-pay-")), funnelDir: null, facilitator: refusingFacilitator, paywall: PAYWALL, publicBaseUrl: BASE_URL, attest });
+  createApp({ key: generateProcessKey(), observationsDir: tempDir("wit-attest-pay-"), funnelDir: null, facilitator: refusingFacilitator, paywall: PAYWALL, publicBaseUrl: BASE_URL, attest });
 
 const post = (base, body, headers = {}) =>
   fetch(`${base}/delivery/attest`, { method: "POST", headers: { "content-type": "application/json", ...headers }, body: typeof body === "string" ? body : JSON.stringify(body) });
@@ -132,7 +130,7 @@ test("paywall wired: a forged payment header is refused before the key — not 2
 
 test("no paywall: attestation is per-IP limited after the shape check — 429 in the envelope, shape errors never spend a slot, the model is not called when limited", async () => {
   const fake = countingAttest();
-  const app = createHostApp({ OBSERVATIONS_DIR: mkdtempSync(path.join(os.tmpdir(), "wit-attest-limit-")), ATTEST_RATE_LIMIT_PER_MINUTE: "1" }, { attest: fake.attest });
+  const app = createHostApp({ OBSERVATIONS_DIR: tempDir("wit-attest-limit-"), ATTEST_RATE_LIMIT_PER_MINUTE: "1" }, { attest: fake.attest });
   await serve(app, async (base) => {
     const first = await post(base, structuredClone(EXAMPLE_BODY));
     assert.equal(first.status, 200);
@@ -158,7 +156,7 @@ test("no paywall: attestation is per-IP limited after the shape check — 429 in
 
 test("the attest limiter and the /quote limiter are separate budgets, and the default is 30 per minute", async () => {
   const fake = countingAttest();
-  const app = createHostApp({ OBSERVATIONS_DIR: mkdtempSync(path.join(os.tmpdir(), "wit-attest-budget-")), QUOTE_RATE_LIMIT_PER_MINUTE: "1" }, { attest: fake.attest });
+  const app = createHostApp({ OBSERVATIONS_DIR: tempDir("wit-attest-budget-"), QUOTE_RATE_LIMIT_PER_MINUTE: "1" }, { attest: fake.attest });
   await serve(app, async (base) => {
     const quote = (body) => fetch(`${base}/quote`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
     assert.equal((await quote({})).status, 400, "first quote: shape error, slot consumed");
@@ -175,7 +173,7 @@ test("the attest limiter and the /quote limiter are separate budgets, and the de
 test("an invalid ATTEST_RATE_LIMIT_PER_MINUTE falls back to the default rather than disabling the bound", async () => {
   const fake = countingAttest();
   for (const bad of ["0", "-5", "lots", ""]) {
-    const app = createHostApp({ OBSERVATIONS_DIR: mkdtempSync(path.join(os.tmpdir(), "wit-attest-env-")), ATTEST_RATE_LIMIT_PER_MINUTE: bad }, { attest: fake.attest });
+    const app = createHostApp({ OBSERVATIONS_DIR: tempDir("wit-attest-env-"), ATTEST_RATE_LIMIT_PER_MINUTE: bad }, { attest: fake.attest });
     await serve(app, async (base) => {
       for (let i = 0; i < 30; i++) assert.equal((await post(base, structuredClone(EXAMPLE_BODY))).status, 200, `${JSON.stringify(bad)} attest #${i + 1}`);
       assert.equal((await post(base, structuredClone(EXAMPLE_BODY))).status, 429, `${JSON.stringify(bad)} left the route unbounded`);
@@ -185,7 +183,7 @@ test("an invalid ATTEST_RATE_LIMIT_PER_MINUTE falls back to the default rather t
 
 test("behind the tunnel every socket is loopback: forwarded client addresses get their own budgets, and no header keeps the socket's", async () => {
   const fake = countingAttest();
-  const app = createHostApp({ OBSERVATIONS_DIR: mkdtempSync(path.join(os.tmpdir(), "wit-attest-xff-")), ATTEST_RATE_LIMIT_PER_MINUTE: "1" }, { attest: fake.attest });
+  const app = createHostApp({ OBSERVATIONS_DIR: tempDir("wit-attest-xff-"), ATTEST_RATE_LIMIT_PER_MINUTE: "1" }, { attest: fake.attest });
   await serve(app, async (base) => {
     const from = (ip) => post(base, structuredClone(EXAMPLE_BODY), { "x-forwarded-for": ip });
     assert.equal((await from("203.0.113.1")).status, 200);
@@ -245,7 +243,7 @@ async function paymentFor(base) {
 }
 
 const paywalledWith = (facilitator, attest, extra = {}) =>
-  createApp({ key: generateProcessKey(), observationsDir: mkdtempSync(path.join(os.tmpdir(), "wit-attest-paid-")), funnelDir: null, facilitator, paywall: PAYWALL, publicBaseUrl: BASE_URL, attest, ...extra });
+  createApp({ key: generateProcessKey(), observationsDir: tempDir("wit-attest-paid-"), funnelDir: null, facilitator, paywall: PAYWALL, publicBaseUrl: BASE_URL, attest, ...extra });
 
 test("paywall wired: the unpaid challenge fetch is free; only requests that carry a payment spend the budget", async () => {
   const fake = countingAttest();
@@ -354,7 +352,7 @@ test("perMinuteLimiter bounds memory, not just budgets: expired windows are drop
 
 test("POST /quote has a global budget across all clients on top of the per-client one, and attest is not charged for it", async () => {
   const fake = countingAttest();
-  const app = createHostApp({ OBSERVATIONS_DIR: mkdtempSync(path.join(os.tmpdir(), "wit-quote-global-")), QUOTE_RATE_LIMIT_PER_MINUTE: "5", QUOTE_RATE_LIMIT_GLOBAL_PER_MINUTE: "3" }, { attest: fake.attest });
+  const app = createHostApp({ OBSERVATIONS_DIR: tempDir("wit-quote-global-"), QUOTE_RATE_LIMIT_PER_MINUTE: "5", QUOTE_RATE_LIMIT_GLOBAL_PER_MINUTE: "3" }, { attest: fake.attest });
   await serve(app, async (base) => {
     const quote = (ip) => fetch(`${base}/quote`, { method: "POST", headers: { "content-type": "application/json", "x-forwarded-for": ip }, body: "{}" });
     for (const ip of ["203.0.113.1", "203.0.113.2", "203.0.113.3"]) assert.equal((await quote(ip)).status, 400, `${ip}: shape error, global slot consumed`);

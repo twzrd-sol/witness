@@ -46,9 +46,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
-import os from "node:os";
+import { readFileSync, rmSync } from "node:fs";
 import path from "node:path";
+import { tempDir } from "./helpers/tmpdir.js";
 
 import { createApp } from "../src/server.js";
 import { listenExclusive } from "../src/listen.js";
@@ -122,7 +122,7 @@ async function serve(app, fn) {
 }
 
 function host(extra = {}) {
-  const observationsDir = extra.observationsDir ?? mkdtempSync(path.join(os.tmpdir(), "wit-shop-adv-"));
+  const observationsDir = extra.observationsDir ?? tempDir("wit-shop-adv-");
   const reader = extra.retrieve ? { retrieve: extra.retrieve, calls: extra.retrieveCalls ?? { n: 0, urls: [] } } : countingRetrieve();
   const key = extra.key ?? generateProcessKey();
   return {
@@ -415,7 +415,7 @@ test("matrix 2 (forged payment headers): runOnce live against the paywall — fo
 
 test("matrix 3 (settle-only-on-2xx): POST /witness GATE_METHOD — verified payment settles once on 200 and never on 400/422/500", async () => {
   const key = generateProcessKey();
-  const dir = mkdtempSync(path.join(os.tmpdir(), "wit-shop-adv-"));
+  const dir = tempDir("wit-shop-adv-");
   const facilitator = acceptingFacilitator();
   let retrieveMode = "ok";
   const { app } = host({
@@ -638,7 +638,7 @@ test("matrix 4 (Done cannot be skipped): ledger of a forged-pay attempt stays in
   const facilitator = acceptingFacilitator();
   const key = generateProcessKey();
   const { app } = host({ key, facilitator });
-  const dataDir = mkdtempSync(path.join(os.tmpdir(), "wit-shop-adv-log-"));
+  const dataDir = tempDir("wit-shop-adv-log-");
   try {
     await serve(app, async (base) => {
       const run = await runOnce({

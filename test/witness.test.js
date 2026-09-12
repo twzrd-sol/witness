@@ -1,8 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert";
-import { mkdtempSync } from "node:fs";
-import os from "node:os";
-import path from "node:path";
+import { tempDir } from "./helpers/tmpdir.js";
 import { generateProcessKey, verifyReceipt } from "../src/receipt.js";
 import { compareReceipts, methodFromRequest, readObservations, specHash } from "../src/observatory.js";
 import { createApp, handleWitness } from "../src/server.js";
@@ -34,7 +32,7 @@ test("receipt verify with process pubkey", async () => {
 
 test("paid card appends; /observatory reads the log, not seeds", async () => {
   const key = generateProcessKey();
-  const dir = mkdtempSync(path.join(os.tmpdir(), "wit-"));
+  const dir = tempDir("wit-");
   const now = () => "2026-08-30T00:00:00.000Z";
   const out = await handleWitness(BODY, {
     retrieve: async () => ({ text: FIXTURE }),
@@ -82,7 +80,7 @@ test("a card never renders a non-supported group as one settled answer", async (
   // Condition: the star map must carry the verdict end to end. A group whose
   // active receipts disagree reads "mixed", never the supported one of the pair.
   const key = generateProcessKey();
-  const dir = mkdtempSync(path.join(os.tmpdir(), "wit-v-"));
+  const dir = tempDir("wit-v-");
   const now = () => "2026-08-30T00:00:00.000Z";
   const deps = { paid: true, key, now, observationsDir: dir };
   await handleWitness(BODY, { ...deps, retrieve: async () => ({ text: FIXTURE }) });
@@ -331,7 +329,7 @@ async function postWitness(app, headers = {}) {
 }
 
 test("no paywall: forged x-payment must not mint a receipt or append", async () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "wit-"));
+  const dir = tempDir("wit-");
   const app = createApp({
     key: generateProcessKey(),
     retrieve: async () => ({ text: FIXTURE }),
@@ -344,7 +342,7 @@ test("no paywall: forged x-payment must not mint a receipt or append", async () 
 });
 
 test("no paywall: forged payment-signature must not mint a receipt or append", async () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "wit-"));
+  const dir = tempDir("wit-");
   const app = createApp({
     key: generateProcessKey(),
     retrieve: async () => ({ text: FIXTURE }),

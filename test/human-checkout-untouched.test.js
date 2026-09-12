@@ -27,10 +27,10 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, readdirSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import os from "node:os";
 import path from "node:path";
+import { tempDir } from "./helpers/tmpdir.js";
 
 import { createHostApp } from "../src/listen.js";
 import { openapiDoc } from "../src/openapi.js";
@@ -158,7 +158,7 @@ function fakeReader(price, calls = { n: 0 }) {
 
 async function withServer(fn, { readerFetch, probeFetch, env = {} } = {}) {
   const server = createHostApp(
-    { OBSERVATIONS_DIR: mkdtempSync(path.join(os.tmpdir(), "wit-hcu-")), ...env },
+    { OBSERVATIONS_DIR: tempDir("wit-hcu-"), ...env },
     { readerFetch, probeFetch },
   ).listen(0, "127.0.0.1");
   await new Promise((resolve) => server.once("listening", resolve));

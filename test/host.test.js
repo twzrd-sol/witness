@@ -1,14 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert";
-import { mkdtempSync } from "node:fs";
-import os from "node:os";
-import path from "node:path";
+import { tempDir } from "./helpers/tmpdir.js";
 import { createHostApp, listenExclusive, readerPayment } from "../src/listen.js";
 import { fillExtract } from "../src/extract.js";
 import { evalAssertion } from "../src/receipt.js";
 
 async function withServer(env, fn, opts = {}) {
-  const dir = env.OBSERVATIONS_DIR || mkdtempSync(path.join(os.tmpdir(), "wit-host-"));
+  const dir = env.OBSERVATIONS_DIR || tempDir("wit-host-");
   const app = createHostApp({ ...env, OBSERVATIONS_DIR: dir }, opts);
   const server = await new Promise((resolve, reject) => {
     const s = listenExclusive(app, { port: 0 }, {

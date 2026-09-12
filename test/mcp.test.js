@@ -1,8 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { writeFileSync } from "node:fs";
 import path from "node:path";
+import { tempDir } from "./helpers/tmpdir.js";
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
@@ -16,7 +16,7 @@ const repoRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), "
 const mcpScript = path.join(repoRoot, "src/mcp.js");
 
 function makeKeyDir(kp) {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "wit-mcp-key-"));
+  const dir = tempDir("wit-mcp-key-");
   writeFileSync(path.join(dir, "keystore"), kp.privateKey.export({ type: "pkcs8", format: "der" }), { mode: 0o600 });
   return dir;
 }
@@ -62,7 +62,7 @@ function createHttpAppWithKey(key) {
   return createApp({
     key,
     retrieve: async () => ({ text: "<p>ok</p>" }),
-    observationsDir: mkdtempSync(path.join(os.tmpdir(), "wit-http-")),
+    observationsDir: tempDir("wit-http-"),
   });
 }
 

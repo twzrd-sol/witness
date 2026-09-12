@@ -14,9 +14,7 @@
  */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
-import os from "node:os";
-import path from "node:path";
+import { tempDir } from "./helpers/tmpdir.js";
 
 import { FacilitatorResponseError } from "@x402/core/server";
 
@@ -133,7 +131,7 @@ function defaultAttest(extra) {
 function buildApp(kind, extra = {}) {
   const base = {
     key: generateProcessKey(),
-    observationsDir: mkdtempSync(path.join(os.tmpdir(), "wit-oa-mtx-")),
+    observationsDir: tempDir("wit-oa-mtx-"),
     funnelDir: null,
     publicBaseUrl: BASE_URL,
     quoteRateLimit: 1000,

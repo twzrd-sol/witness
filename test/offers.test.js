@@ -1,8 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
-import os from "node:os";
-import path from "node:path";
+import { tempDir } from "./helpers/tmpdir.js";
 
 import { createHostApp } from "../src/listen.js";
 import { OFFERS, buildCheckoutUrl, handleOfferQuote, parseX402Challenge, resolveResourceUrl } from "../src/offers.js";
@@ -41,7 +39,7 @@ function fakeProbe({ status = 402, accepts = liveAccepts, calls = { n: 0 } } = {
 
 async function withServer(fn, { readerFetch, probeFetch, gateTtlMs, env = {} } = {}) {
   const server = createHostApp(
-    { OBSERVATIONS_DIR: mkdtempSync(path.join(os.tmpdir(), "wit-offers-")), ...env },
+    { OBSERVATIONS_DIR: tempDir("wit-offers-"), ...env },
     { readerFetch, probeFetch, gateTtlMs },
   ).listen(0, "127.0.0.1");
   await new Promise((resolve) => server.once("listening", resolve));

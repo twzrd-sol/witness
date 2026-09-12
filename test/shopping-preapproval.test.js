@@ -1,8 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert";
-import { mkdtempSync } from "node:fs";
-import os from "node:os";
-import path from "node:path";
+import { tempDir } from "./helpers/tmpdir.js";
 import { generateProcessKey, pubkeyB64, verifyReceipt } from "../src/receipt.js";
 import { createApp, handleWitness } from "../src/server.js";
 import { decideGate, GATE_METHOD } from "../scripts/shopping-preapproval.mjs";
@@ -51,7 +49,7 @@ test("gate: a receipt-shaped object without a verdict field cannot approve", () 
 
 test("dry run: quote is free, verdict announced, and no payment header is ever built", async () => {
   const key = generateProcessKey();
-  const dir = mkdtempSync(path.join(os.tmpdir(), "wit-shop-"));
+  const dir = tempDir("wit-shop-");
   const app = createApp({ key, retrieve: async () => ({ text: "<p>price: $5.99</p>" }), observationsDir: dir });
   const server = app.listen(0, "127.0.0.1");
   await new Promise((r) => server.once("listening", r));
@@ -72,7 +70,7 @@ test("dry run: quote is free, verdict announced, and no payment header is ever b
 
 test("paid run: settles only on a deliverable quote and gates on a signature-verifiable receipt", async () => {
   const key = generateProcessKey();
-  const dir = mkdtempSync(path.join(os.tmpdir(), "wit-shop-"));
+  const dir = tempDir("wit-shop-");
   // The x402 middleware is bypassed in tests via deps.paid; the harness's own
   // payment leg is the same shape: one POST /witness that returns a receipt.
   const out = await handleWitness(GATE_METHOD, {

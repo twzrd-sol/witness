@@ -1,8 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert";
-import { mkdtempSync } from "node:fs";
-import os from "node:os";
-import path from "node:path";
+import { tempDir } from "./helpers/tmpdir.js";
 import { generateProcessKey, verifyReceipt } from "../src/receipt.js";
 import { compareReceipts, readObservations, specHash } from "../src/observatory.js";
 import { BILLABLE_VERDICTS, NEVER_BILLED, handleQuote, handleWitness } from "../src/server.js";
@@ -81,7 +79,7 @@ test("the billing line is a constant, and nothing outside it is ever charged", a
 
 test("twice-pay survives the new class: two contradicted receipts group into one card", async () => {
   const key = generateProcessKey();
-  const dir = mkdtempSync(path.join(os.tmpdir(), "wit-contra-"));
+  const dir = tempDir("wit-contra-");
   const b = body("starter_price < 10");
   const deps = { retrieve: reader(FIXTURE), paid: true, key, observationsDir: dir };
   const first = await handleWitness(b, { ...deps, now: () => "2026-08-30T15:00:00.000Z" });
