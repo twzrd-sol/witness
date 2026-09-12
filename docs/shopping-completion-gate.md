@@ -73,10 +73,13 @@ settlement/delivery, or prevent reuse within the signed validity window.
 From this worktree with Node 24 on PATH:
 
 ```sh
-node --test test/shopping-completion.test.js test/shopping-preapproval.test.js
+node --test test/shopping-completion.test.js test/shopping-preapproval.test.js test/shopping-mandate.test.js
 npm test
 git diff --check
 ```
+
+The mandate-bound digital-product Done-gate (no store URL; human checkout
+untouched) is documented in `docs/consumer/shopping-mandate.md`.
 
 Tests use ephemeral signing keys and local fixtures. They exercise the live
 control path with payment transport replaced, real child verification, tampering,
