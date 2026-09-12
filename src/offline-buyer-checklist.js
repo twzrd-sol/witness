@@ -12,6 +12,7 @@ import {
   verifyMandate,
   bindMandateToQuote,
   isHumanCheckoutQuote,
+  evaluateStoreMandatePath,
 } from "./shopping-mandate.js";
 import { KIND, ORIGIN, inspectCatalog, getProduct } from "./fixture-storefront.js";
 
@@ -119,6 +120,7 @@ export function evaluateBuyerChecklist(bundle, opts = {}) {
 
   const unique = [...new Set(failed)];
   const ready = unique.length === 0;
+  const storePath = evaluateStoreMandatePath(bundle, { env: opts.env ?? process.env });
   return {
     ready,
     checklist: ready ? "passed" : "failed",
@@ -129,6 +131,14 @@ export function evaluateBuyerChecklist(bundle, opts = {}) {
     check: {
       approve: false,
       reason: ready ? "checklist_passed_not_done" : unique[0],
+    },
+    store: storePath.store,
+    path: {
+      kind: storePath.kind,
+      armed: storePath.armed,
+      ready: storePath.ready,
+      action: storePath.action,
+      reason: storePath.check.reason,
     },
   };
 }

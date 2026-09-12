@@ -2,7 +2,7 @@
 
 2026-09-12. Schema plus a library Done predicate for the narrow x402 digital-product
 pilot. No Shopify store URL is required. `SHOPIFY_STORE_URL` is env-gated and a
-no-op until set (`src/shopify-mandate-stub.js`). This increment does not add
+no-op until set (`src/shopify-mandate-path.js`). This increment does not add
 routes, does not pay, and does not touch the human merchant-checkout rail.
 
 Mandate field names follow the consumer implementation contract
@@ -46,6 +46,8 @@ trust anchor.
 Library: `src/shopping-mandate.js` (`validateMandate`, `signMandate`,
 `verifyMandate`, `evaluateDone`). Store URL env lives in
 `src/shopify-mandate-stub.js` (`resolveStoreUrl`, `evaluateShopifyMandateStub`).
+The env-gated path is `src/shopify-mandate-path.js`
+(`evaluateShopifyMandatePath`).
 
 ## Env-gated store URL
 
@@ -53,23 +55,32 @@ Library: `src/shopping-mandate.js` (`validateMandate`, `signMandate`,
 [`schemas/shopify-store-url-env-v1.json`](schemas/shopify-store-url-env-v1.json).
 Stub report schema:
 [`schemas/shopify-mandate-stub-v1.json`](schemas/shopify-mandate-stub-v1.json).
+Path report schema:
+[`schemas/shopify-mandate-path-v1.json`](schemas/shopify-mandate-path-v1.json).
 
-| Env | `resolveStoreUrl` | Done |
-| --- | --- | --- |
-| unset, empty, whitespace | `enabled: false`, `reason: store_url_unset` (no-op) | digital-product path unchanged |
-| valid `https://` URL, no userinfo | `enabled: true`, `reason: store_url_configured` | reported on `evaluateDone.store`; not a predicate; never fetched |
-| set but not a usable https URL | `ok: false`, `reason: store_url_invalid` | reported; still not a Done predicate |
+| Env | `resolveStoreUrl` | Path | Done |
+| --- | --- | --- | --- |
+| unset, empty, whitespace | `enabled: false`, `reason: store_url_unset` (no-op) | `idle` / `unset_noop`; bundle not inspected | digital-product path unchanged |
+| valid `https://` URL, no userinfo | `enabled: true`, `reason: store_url_configured` | `env_ready` / `configured_eval`; offline predicates only | reported on `evaluateDone.store` / `path`; not a predicate; never fetched |
+| set but not a usable https URL | `ok: false`, `reason: store_url_invalid` | `idle` / `invalid_noop`; bundle not inspected | reported; still not a Done predicate |
 
-`evaluateShopifyMandateStub` is the Shopify mandate stub. Unset/blank is
+`evaluateShopifyMandateStub` is the env resolver. Unset/blank is
 `unset_noop`. A valid https value is `configured_noop` (armed, still not live).
-A set but unusable value is `invalid_noop`. The stub never fetches, never
-invents a URL, never echoes `store_url`, and cannot set `completion` or
-`checkout_approved`. Caller-supplied `store_url` is ignored.
+A set but unusable value is `invalid_noop`.
 
-`evaluateDone` reads `opts.env` or `process.env` through that stub and reports
-`store: { env, ok, enabled, reason }` without echoing the URL. A configured
-store URL cannot complete a merchant checkout quote. `.env.example` documents
-the variable as optional.
+`evaluateShopifyMandatePath` is the mandate path. Unset/invalid stays a no-op
+and does not inspect the bundle. When armed it evaluates four offline
+predicates (`mandate_rejects_store_fields`, `resource_not_store_origin`,
+`quote_not_store_origin`, `human_checkout_untouched`). `ready: true` is
+`path_ready_not_live` — still not Done and still not checkout approval.
+The path never fetches, never invents a URL, never echoes `store_url`, and
+cannot set `completion` or `checkout_approved`. Caller-supplied `store_url`
+is ignored.
+
+`evaluateDone` reads `opts.env` or `process.env` through that path and reports
+`store: { env, ok, enabled, reason }` plus `path: { kind, armed, ready, action, reason }`
+without echoing the URL. A configured store URL cannot complete a merchant
+checkout quote. `.env.example` documents the variable as optional.
 
 ## Done predicate
 
@@ -127,7 +138,7 @@ rewrite the human rail.
 ## Offline verification
 
 ```sh
-node --test test/shopping-mandate.test.js test/shopify-mandate-stub.test.js test/human-checkout-untouched.test.js
+node --test test/shopping-mandate.test.js test/shopify-mandate-stub.test.js test/shopify-mandate-path.test.js test/human-checkout-untouched.test.js test/offline-buyer-checklist.test.js
 npm test
 git diff --check
 ```
