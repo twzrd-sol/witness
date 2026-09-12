@@ -16,14 +16,12 @@
  */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
-import os from "node:os";
-import path from "node:path";
 
 import { createApp, perMinuteLimiter } from "../src/server.js";
 import { listenExclusive } from "../src/listen.js";
 import { generateProcessKey } from "../src/receipt.js";
 import { EXAMPLE_BODY } from "../src/routes/delivery.js";
+import { tempDir } from "./helpers/tmpdir.js";
 
 const PAYWALL = {
   evmAddress: "0xabc0000000000000000000000000000000000001",
@@ -107,7 +105,7 @@ function host({ retrieve, facilitator, attest, ...extra } = {}) {
   return createApp({
     key: generateProcessKey(),
     retrieve: retrieve ?? (async () => ({ text: FIXTURE })),
-    observationsDir: extra.observationsDir ?? mkdtempSync(path.join(os.tmpdir(), "wit-flood-")),
+    observationsDir: extra.observationsDir ?? tempDir("wit-flood-"),
     funnelDir: null,
     facilitator: facilitator ?? countingFacilitator(),
     paywall: extra.paywall === undefined ? PAYWALL : extra.paywall,
@@ -127,13 +125,14 @@ const post = (base, route, body, headers = {}) =>
   });
 
 async function read(res) {
-  const text = await res.text();
+  const response = await res;
+  const text = await response.text();
   let json = null;
   try { json = JSON.parse(text); } catch { /* challenge body may be empty or non-JSON */ }
   return {
-    status: res.status,
+    status: response.status,
     json,
-    paymentRequired: res.headers.get("payment-required"),
+    paymentRequired: response.headers.get("payment-required"),
   };
 }
 
@@ -341,7 +340,14 @@ test("flood (per-IP): payment-carrying POST /witness is limited before the facil
     quoteRateLimit: 2,
     quoteGlobalRateLimit: 80,
   }), async (base) => {
-    const pay = { "payment-signature": "forged", "x-forwarded-for": "203.0.113.80" };
+    const pay = {
+      "payment-signature": Buffer.from(JSON.stringify({
+        x402Version: 2,
+        accepted: { scheme: "exact", network: "eip155:8453" },
+        payload: { signature: "0x00", authorization: {} },
+      })).toString("base64"),
+      "x-forwarded-for": "203.0.113.80",
+    };
     const rows = await flood(12, () => post(base, "/witness", BODY, pay));
     assert.equal(countStatus(rows, 429), 10);
     for (const row of rows.filter((r) => r.status === 429)) assertLimited(row, "paid-path 429");
