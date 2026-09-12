@@ -1,4 +1,4 @@
-# Consumer pilot work status — 2026-09-10
+# Consumer pilot work status — 2026-09-11
 
 Completed:
 
@@ -8,7 +8,21 @@ Completed:
 - Verified six UCP profiles and six actual Catalog-returned checkout URLs using read-only calls and Shopify's documented example profile.
 - Validated artifact consistency: 15 rows, six distinct verified merchants, matching variant IDs/currency/checkout links, no payment or direct-completion claims.
 
-Implementation and independent review are **not complete**. No consumer application code was written, deployed or tested. Existing application code and unrelated changes were left intact.
+HTTP offer surface (`GET /offers/:id`, `GET /api/offers/:id`, task.json,
+`POST /api/quotes`) is live on witness.outbid.sh (verified 2026-09-11:
+merchant_hosted checkout URL, no `payment_authorized`). Live
+`POST /authorize-purchase` is still 404 — the mandate adapter is on this
+branch only and was not deployed.
+`src/storefront-backend.js` (Claude Commerce Agents methods + Witness
+pre-checkout gate + eligibility-only mandate) is on this branch only —
+not a claim of organic demand. Do not treat local tests or operator-paid
+Witness canaries as adoption. `POST /authorize-purchase`, `GET /api/purchases/:id`, and
+`prepare_checkout` never set `payment_authorized`; a failed mandate or a
+non-supported page withholds the merchant URL. Purchase status is
+header-subject only (`X-Witness-Subject`); another subject gets 404.
+Checkout stays merchant-hosted. This increment does not touch CDP admission.
+
+Independent review of the consumer path is **not complete**.
 
 Repository requirement: `AGENTS.md` says “GLM implements; Grok reviews.” Attempts:
 

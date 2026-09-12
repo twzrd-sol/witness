@@ -75,14 +75,45 @@ says at the moment of purchase. That is Witness's job:
 
 ## What would make Witness a blueprint backend
 
-1. A `StorefrontBackend` adapter (Python, in the blueprint's package layout)
-   whose `search_products` reads `GET /api/offers/:id` (or a list endpoint,
-   once there is more than one offer), and whose `prepare_checkout` posts to
-   `POST /api/quotes` and returns `checkout_url`.
-2. A Witness call inside `prepare_checkout`, gated by the preapproval
-   verdict, with the receipt attached to the checkout card the host renders.
+1. **Done in this tree.** `src/storefront-backend.js` implements the five
+   blueprint methods against the in-process catalog (`search_products`,
+   `get_product_detail`, `get_order_status`, `get_policy`, `prepare_checkout`).
+   A Python port into `anthropics/commerce-agents` package layout is wiring,
+   not a second product. `get_order_status` stays `available:false` —
+   merchant-hosted checkout, no invented order.
+2. **Done in this tree.** `prepare_checkout` calls an injected Witness
+   `observe(offer)` and returns `checkout_url` only on `decideGate` approve
+   (`verdict: supported`). contradicted, stale, incomplete, missing observer,
+   and observe failures withhold the URL. The receipt is attached when a
+   page observation exists. This path never pays, never signs, and never
+   sets `payment_authorized`.
 3. Evals authored with `/author-commerce-evals` covering the
-   contradicted-price path, so the gate is exercised, not assumed.
+   contradicted-price path still sit in the blueprint repo. Local coverage
+   is `test/storefront-backend.test.js` and `test/mandate.test.js`.
+
+## Mandate wedge (eligibility only)
+
+`src/mandate.js` + `src/mandate-ledger.js` + `POST /authorize-purchase`
++ `GET /api/purchases/:id`.
+A signed `witness.mandate.v1` binds offer, merchant, payee (checkout
+origin), variant, quantity, currency, license URL digest, subject, and a
+cumulative ceiling. Verification uses configured issuer kids only —
+caller `publicKey` is ignored. File-backed reservations replay identical
+requests (same subject/offer/qty/`attempt`), reject a reused `mandate_id`
+with a different payload, and refuse a second $6 attempt under a $10
+ceiling. The ledger is JSON-file or in-process memory (`MANDATE_LEDGER_FILE`,
+`MANDATE_ISSUER_PUBKEYS_FILE`); unconfigured issuers stay 503.
+SQLite remains the contract's later persistence target, not this increment.
+
+A 200 is **not** payment: `payment_authorized:false`,
+`order_status:not_created`, `enforcement_scope:eligibility_only`.
+`GET /api/purchases/:id` returns that same decision to the matching
+`X-Witness-Subject` only. Query-string subject is ignored. Another
+subject or an unknown id is `purchase_not_found`. The read overlays
+`payment_authorized:false` so a stored decision or a merchant handoff
+cannot be read as paid.
+`prepare_checkout` still requires a Witness `supported` page verdict and
+still returns a merchant-hosted URL. A failed mandate withholds that URL.
 
 ## Sources
 

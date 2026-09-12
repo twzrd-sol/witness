@@ -8,6 +8,7 @@ import { appendObservation, compareReceipts, methodFromRequest, readObservations
 import { renderStarMap } from "./star-map.js";
 import { funnelOutcome, funnelReason, funnelSpecHash, funnelVerdict, recordFunnel } from "./funnel.js";
 import { createOffersRouter } from "./routes/offers.js";
+import { createMandateLedger } from "./mandate-ledger.js";
 import { paymentMiddleware } from "@x402/express";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { x402ResourceServer, HTTPFacilitatorClient } from "@x402/core/server";
@@ -264,7 +265,12 @@ export async function handleWitness(body, deps = {}) {
 
 export function createApp(deps = {}) {
   const key = processKey(deps);
-  const wired = { ...deps, key, observationsDir: deps.observationsDir ?? "data" };
+  const wired = {
+    ...deps,
+    key,
+    observationsDir: deps.observationsDir ?? "data",
+    ledger: deps.ledger ?? createMandateLedger(deps.mandateLedgerFile),
+  };
   const resourceUrl = `${deps.publicBaseUrl || "https://witness.outbid.sh"}/witness`;
   const app = express();
   const funnelDir = deps.funnelDir === undefined ? wired.observationsDir : deps.funnelDir;
@@ -331,7 +337,7 @@ export function createApp(deps = {}) {
   });
   const reply = (res, out) => res.status(out.status).json(out.json);
   // Consumer offers: catalog, cart, and merchant-hosted checkout URL.
-  app.use(createOffersRouter());
+  app.use(createOffersRouter(wired));
   // Express 4 drops a rejected async handler on the floor: the request hangs and the
   // process dies on the unhandled rejection. Route every rejection to the 500 handler.
   const guard = (fn) => (req, res, next) => fn(req, res, next).catch(next);

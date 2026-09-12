@@ -135,6 +135,37 @@ export function openapiDoc(env = process.env) {
           },
         },
       },
+      "/api/purchases/{id}": {
+        get: {
+          summary: "Same-subject purchase status — eligibility only",
+          description: "Returns the durable eligibility decision for a purchase ID. Requires the X-Witness-Subject header; a query-string subject is ignored and does not authenticate. Another subject or an unknown id is 404 purchase_not_found — the response does not reveal whether the id exists. A 200 never infers payment from the decision or a merchant handoff: payment_authorized is always false and order_status is not_created.",
+          parameters: [
+            { name: "id", in: "path", required: true, schema: { type: "string" } },
+            { name: "X-Witness-Subject", in: "header", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            "200": out("Eligibility decision, not a paid order", { type: "object" }),
+            "401": out("Subject required", { type: "object" }),
+            "404": out("Unknown or foreign purchase", { type: "object" }),
+          },
+        },
+      },
+      "/authorize-purchase": {
+        post: {
+          summary: "Evaluate a signed mandate — eligibility only",
+          description: "Verifies an operator-signed mandate against the catalog quote. A 200 is eligibility_only: payment_authorized is always false and no order is created. Invalid signature, attacker-supplied keys, expiry, bind mismatches, and budget/idempotency conflicts fail closed. Never bills.",
+          security: [],
+          requestBody: body({ type: "object", required: ["subject", "offer_id", "mandate"], properties: { subject: { type: "string" }, offer_id: { type: "string" }, quantity: { type: "integer", minimum: 1, maximum: 99, default: 1 }, attempt: { type: "string", description: "Optional purchase-attempt id. Identical retries omit it or repeat it; a second attempt under the same mandate consumes more of the ceiling." }, mandate: { type: "object" } } }),
+          responses: {
+            "200": out("Eligible, not authorized to pay", { type: "object" }),
+            "400": out("Malformed mandate", { type: "object" }),
+            "401": out("Subject required", { type: "object" }),
+            "409": out("Idempotency conflict", { type: "object" }),
+            "422": out("Mandate does not bind this quote", { type: "object" }),
+            "503": out("No issuer keys configured", { type: "object" }),
+          },
+        },
+      },
       "/witness": {
         get: {
           summary: "Crawlable discovery — 402 payment challenge",
