@@ -37,6 +37,11 @@ the library's own verifier, not a reimplementation.
 
 All eleven must hold. `INCOMPLETE` is the default and a legal terminal state.
 
+Related checkers, different claims: `scripts/verify-shopping-receipt.mjs` is the
+shopping-preapproval observation gate; `src/shopping-mandate.js` `evaluateDone`
+is the mandate-bound x402 digital-product gate (no Shopify store URL). Do not
+treat one report as the other.
+
 ## Scoring
 
 Every check appends `{ts, run, done, failed[]}` to `data/loop-runs/ledger.ndjson`.

@@ -1,0 +1,23 @@
+{
+  "schema": "witness.shopping_mandate.v1",
+  "audience": "witness.shopping.digital_product",
+  "issuer_kid": "operator-pilot-1",
+  "subject": "agent-pilot-1",
+  "mandate_id": "mdp-2026-09-12-001",
+  "offer_id": "outbid-reader-scrape",
+  "merchant": "outbid",
+  "payee": "F1AbWuXJcBT9arW9wc6Xr2vom5NBtngWsz6Ht16jRBLM",
+  "product": "Reader",
+  "quantity": 1,
+  "currency": "USDC",
+  "max_total_minor": 5000,
+  "expires_at": "2027-01-01T00:00:00Z",
+  "recurring": "never",
+  "rail": "x402",
+  "resource_url": "https://reader.outbid.sh/scrape",
+  "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+  "asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+  "purpose": "research_api",
+  "license_url": null,
+  "terms_digest": null
+}
