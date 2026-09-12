@@ -1,0 +1,103 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://witness.outbid.sh/schemas/fixture-storefront-v1.json",
+  "title": "Witness fixture storefront catalog (digital-product pilot)",
+  "description": "Local-only catalog for the x402 digital-product buyer checklist. Not a Shopify store, Catalog, or UCP profile. Quotes are built from these bytes; nothing is probed or paid. additionalProperties is false — store_url, cart_url, checkout_url, variant_id, and cart_base are rejected.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["kind", "live_shopify", "origin", "products"],
+  "properties": {
+    "kind": {
+      "const": "witness.fixture_storefront.v1",
+      "description": "Fixture catalog domain. A live offer list or Shopify product JSON is not this document."
+    },
+    "live_shopify": {
+      "const": false,
+      "description": "Must be false. A true value means the catalog is not a fixture."
+    },
+    "origin": {
+      "const": "local",
+      "description": "In-process or loopback. A public origin is not this stub."
+    },
+    "note": {
+      "type": "string",
+      "maxLength": 512
+    },
+    "products": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/definitions/product" }
+    }
+  },
+  "definitions": {
+    "product": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "rail",
+        "checkout",
+        "merchant",
+        "product",
+        "price_usdc",
+        "amount_atomic",
+        "asset",
+        "resource",
+        "accepts"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "rail": { "const": "x402" },
+        "checkout": { "const": "x402" },
+        "merchant": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "product": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "variant": { "type": "string", "maxLength": 128 },
+        "outcome": { "type": "string", "maxLength": 256 },
+        "deliverable": { "type": "string", "maxLength": 512 },
+        "price_usdc": { "type": "string", "pattern": "^[0-9]+\\.[0-9]{1,6}$" },
+        "amount_atomic": { "type": "string", "pattern": "^[1-9][0-9]*$" },
+        "asset": { "const": "USDC" },
+        "purpose": {
+          "type": "string",
+          "enum": ["research_api", "software", "digital_deliverable"]
+        },
+        "product_url": {
+          "type": "string",
+          "pattern": "^https://",
+          "maxLength": 2048,
+          "description": "Optional public description URL. Not a cart or checkout permalink."
+        },
+        "resource": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["method", "url_template"],
+          "properties": {
+            "method": { "type": "string", "enum": ["GET", "POST"] },
+            "url_template": { "type": "string", "pattern": "^https://", "maxLength": 2048 },
+            "input": { "type": "object" },
+            "input_in": { "const": "body" }
+          }
+        },
+        "accepts": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["scheme", "network", "amount", "asset", "payTo"],
+            "properties": {
+              "scheme": { "const": "exact" },
+              "network": {
+                "type": "string",
+                "enum": ["eip155:8453", "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"]
+              },
+              "amount": { "type": "string", "pattern": "^[1-9][0-9]*$" },
+              "asset": { "type": "string", "minLength": 1, "maxLength": 128 },
+              "payTo": { "type": "string", "minLength": 1, "maxLength": 128 }
+            }
+          }
+        }
+      }
+    }
+  }
+}
