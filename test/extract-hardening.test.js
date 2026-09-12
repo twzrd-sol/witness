@@ -11,7 +11,7 @@ import { MAX_EXTRACT_KEY_LENGTH, MAX_EXTRACT_KEYS, normalizeExtract } from "../s
 import { generateProcessKey } from "../src/receipt.js";
 import { methodFromRequest, specHash } from "../src/observatory.js";
 import { createApp, handleQuote, handleWitness } from "../src/server.js";
-import { installCrashGuard } from "../src/listen.js";
+import { installCrashGuard, listenExclusive } from "../src/listen.js";
 
 const PAGE_URL = "https://example.com/pricing";
 const FIXTURE = `<p>starter_price: $49/mo</p><p>rank: 7</p>`;
@@ -23,9 +23,25 @@ const PROTO = JSON.parse('{"__proto__":"number"}');
 const PARTIAL = JSON.parse('{"__proto__":"number","rank":"number"}');
 const keys = (n) => Object.fromEntries(Array.from({ length: n }, (_, i) => [`k${i}`, "number"]));
 
+function occupyLoopback() {
+  const blocker = createServer();
+  return new Promise((resolve, reject) => {
+    blocker.once("error", (e) => reject(new Error(`failed to occupy a loopback port (${e.code}): ${e.message}`, { cause: e })));
+    blocker.listen({ port: 0, host: "127.0.0.1", exclusive: true }, () => resolve(blocker));
+  });
+}
+
+function listenLoopback(app, port = 0) {
+  return new Promise((resolve, reject) => {
+    const server = listenExclusive(app, { port }, {
+      onListening: () => resolve(server),
+      onError: (e) => reject(new Error(`host listen failed (${e.code}): ${e.message}`, { cause: e })),
+    });
+  });
+}
+
 async function withServer(deps, fn) {
-  const server = createApp({ key: generateProcessKey(), retrieve, ...deps }).listen(0, "127.0.0.1");
-  await new Promise((r) => server.once("listening", r));
+  const server = await listenLoopback(createApp({ key: generateProcessKey(), retrieve, ...deps }));
   try { return await fn(`http://127.0.0.1:${server.address().port}`); } finally { await new Promise((r) => server.close(r)); }
 }
 const post = (base, route, body) => fetch(`${base}${route}`, { method: "POST", headers: { "content-type": "application/json" }, body: typeof body === "string" ? body : JSON.stringify(body) });
@@ -126,16 +142,40 @@ const ENTRY = fileURLToPath(new URL("../src/listen.js", import.meta.url));
 const SRC = (f) => JSON.stringify(new URL(`../src/${f}`, import.meta.url).href);
 const spawnNode = (args, cwd, env) => spawn(process.execPath, args, { cwd, env: { PATH: process.env.PATH, HOME: process.env.HOME, ...env }, stdio: ["ignore", "pipe", "pipe"] });
 
+test("listen helper: an occupied exclusive port fails with a host listen error, not an uncaught EADDRINUSE", async () => {
+  const blocker = await occupyLoopback();
+  try {
+    const app = createApp({ key: generateProcessKey(), retrieve, funnelDir: null });
+    await assert.rejects(
+      () => listenLoopback(app, blocker.address().port),
+      (e) => {
+        assert.match(e.message, /host listen failed/);
+        assert.notEqual(e.code, "EADDRINUSE", "the suite wraps the kernel code so a conflict is not raw EADDRINUSE noise");
+        return true;
+      },
+    );
+  } finally { await new Promise((r) => blocker.close(r)); }
+});
+
 test("entrypoint: a fatal before listen (port already bound) exits non-zero, so systemd Restart=on-failure fires", async () => {
-  const blocker = createServer().listen(0, "127.0.0.1");
-  await new Promise((r) => blocker.once("listening", r));
+  const blocker = await occupyLoopback();
   const cwd = mkdtempSync(path.join(os.tmpdir(), "wit-entry-")); // data/keystore lands here, never in the repo
   try {
     const child = spawnNode([ENTRY], cwd, { HOST: "127.0.0.1", PORT: String(blocker.address().port) });
-    let err = ""; child.stderr.on("data", (d) => { err += d; });
-    const code = await new Promise((r) => child.once("exit", r));
-    assert.notEqual(code, 0, `exit ${code}; stderr: ${err.slice(0, 200)}`);
-    assert.match(err, /EADDRINUSE/); assert.match(err, /exiting 1/);
+    let err = "", out = "";
+    child.stderr.on("data", (d) => { err += d; });
+    child.stdout.on("data", (d) => { out += d; });
+    const code = await new Promise((resolve, reject) => {
+      const t = setTimeout(() => {
+        child.kill();
+        reject(new Error(`child still running after 5s — conflict must exit, not hang (stdout=${out.slice(0, 120)} stderr=${err.slice(0, 120)})`));
+      }, 5000);
+      child.once("exit", (c) => { clearTimeout(t); resolve(c); });
+    });
+    assert.notEqual(code, 0, `exit ${code}; stderr: ${err.slice(0, 200)}; stdout: ${out.slice(0, 200)}`);
+    assert.match(err, /listen error/, "conflict is a host listen failure, not a clean start");
+    assert.match(err, /exiting 1/);
+    assert.doesNotMatch(out, /witness listening/, "Express 5 must not fire the listening callback on a bound port");
   } finally { await new Promise((r) => blocker.close(r)); }
 });
 

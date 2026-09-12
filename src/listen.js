@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import { createServer as createHttpServer } from "node:http";
+import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { x402Client } from "@x402/core/client";
 import { ExactEvmScheme } from "@x402/evm/exact/client";
@@ -212,21 +214,30 @@ export function installCrashGuard(proc = process, log = console.error) {
   return { listening: () => { listening = true; } };
 }
 
-export function start(env = process.env) {
-  const host = env.HOST || "127.0.0.1";
-  const port = Number(env.PORT || 4032);
-  const server = createHostApp(env).listen(port, host, () => console.log(`witness listening on http://${host}:${port}`));
-  // Express 5's listen no longer turns a bound port into an uncaught exception;
-  // without this handler the process has nothing on the event loop and exits 0,
-  // which systemd Restart=on-failure reads as a clean stop.
-  server.on("error", (e) => {
+/** Bind `app` after the error handler is armed. Express 5's `app.listen(cb)`
+ *  registers `cb` as an 'error' listener, so EADDRINUSE invokes the "listening"
+ *  callback, swallows the error, and (if nothing else is on the loop) exits 0 —
+ *  systemd Restart=on-failure reads a clean stop. `exclusive` so a taken port
+ *  cannot be shared. Tests pass `onError` that rejects; the default exits 1. */
+export function listenExclusive(app, { host = "127.0.0.1", port = 0, exclusive = true } = {}, { onListening, onError } = {}) {
+  const server = createHttpServer(app);
+  server.on("error", onError ?? ((e) => {
     console.error("witness: listen error — exiting 1 for systemd to restart", e && (e.stack || e.message || e));
     process.exit(1);
-  });
+  }));
+  server.listen({ host, port, exclusive }, onListening);
   return server;
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+export function start(env = process.env) {
+  const host = env.HOST || "127.0.0.1";
+  const port = Number(env.PORT || 4032);
+  return listenExclusive(createHostApp(env), { host, port }, {
+    onListening: () => console.log(`witness listening on http://${host}:${port}`),
+  });
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   const guard = installCrashGuard();
   start().once("listening", guard.listening);
 }

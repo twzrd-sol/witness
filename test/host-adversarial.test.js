@@ -34,6 +34,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { createApp } from "../src/server.js";
+import { listenExclusive } from "../src/listen.js";
 import { generateProcessKey, verifyReceipt } from "../src/receipt.js";
 import { readObservations } from "../src/observatory.js";
 import { EXAMPLE_BODY } from "../src/routes/delivery.js";
@@ -103,8 +104,12 @@ function countingAttest() {
 }
 
 async function serve(app, fn) {
-  const server = app.listen(0, "127.0.0.1");
-  await new Promise((r) => server.once("listening", r));
+  const server = await new Promise((resolve, reject) => {
+    const s = listenExclusive(app, { port: 0 }, {
+      onListening: () => resolve(s),
+      onError: (e) => reject(new Error(`host listen failed (${e.code}): ${e.message}`, { cause: e })),
+    });
+  });
   try {
     return await fn(`http://127.0.0.1:${server.address().port}`);
   } finally {
