@@ -1,0 +1,72 @@
+{
+  "kind": "witness.fixture_storefront.v1",
+  "live_store": false,
+  "origin": "local",
+  "note": "Offline digital-product catalog for the buyer checklist. Quotes are built from these bytes. This file is not a live store, Catalog profile, or UCP session.",
+  "products": [
+    {
+      "id": "outbid-reader-scrape",
+      "rail": "x402",
+      "checkout": "x402",
+      "merchant": "outbid",
+      "product": "Reader",
+      "variant": "scrape — HTML to markdown",
+      "outcome": "Read any public page as clean markdown.",
+      "deliverable": "JSON {title, content, markdown, word_count} for one public URL.",
+      "price_usdc": "0.005",
+      "amount_atomic": "5000",
+      "asset": "USDC",
+      "purpose": "research_api",
+      "product_url": "https://outbid.sh",
+      "resource": {
+        "method": "GET",
+        "url_template": "https://reader.outbid.sh/scrape?url={url}",
+        "input": { "url": "public http(s) URL to read" }
+      },
+      "accepts": [
+        {
+          "scheme": "exact",
+          "network": "eip155:8453",
+          "amount": "5000",
+          "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          "payTo": "0x14df772BD496bBb7f49Bc3E992Ce13B2c441177F"
+        },
+        {
+          "scheme": "exact",
+          "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+          "amount": "5000",
+          "asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+          "payTo": "F1AbWuXJcBT9arW9wc6Xr2vom5NBtngWsz6Ht16jRBLM"
+        }
+      ]
+    },
+    {
+      "id": "fixture-digital-note",
+      "rail": "x402",
+      "checkout": "x402",
+      "merchant": "fixture",
+      "product": "Offline note",
+      "variant": "in-process bytes",
+      "outcome": "Return a fixture JSON note without calling a network.",
+      "deliverable": "JSON {note, fixture:true} from local catalog bytes.",
+      "price_usdc": "0.001",
+      "amount_atomic": "1000",
+      "asset": "USDC",
+      "purpose": "digital_deliverable",
+      "resource": {
+        "method": "GET",
+        "url_template": "https://fixture.witness.test/note",
+        "input_in": "body"
+      },
+      "accepts": [
+        {
+          "scheme": "exact",
+          "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+          "amount": "1000",
+          "asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+          "payTo": "Fxtr111111111111111111111111111111111111111"
+        }
+      ]
+    }
+  ]
+}
