@@ -174,13 +174,31 @@ export function resourceScopeAllows(scopeRaw, resourceRaw) {
   }
 }
 
+/** True when the quote is the human merchant rail or still carries its handoff. */
 export function isHumanCheckoutQuote(quote) {
   if (!quote || typeof quote !== "object" || Array.isArray(quote)) return false;
   if (quote.rail === "merchant_checkout") return true;
   if (quote.checkout === "merchant_hosted") return true;
   if (typeof quote.checkout_url === "string" && quote.checkout_url.length) return true;
+  if (typeof quote.cart_url === "string" && quote.cart_url.length) return true;
+  if (typeof quote.cart === "string" && quote.cart.length) return true;
   if (quote.cart && typeof quote.cart === "object") return true;
   return false;
+}
+
+/** Accept `{status, body}`, `{status, json}`, or a bare quote object. */
+function unwrapQuote(quoteWrap) {
+  if (!quoteWrap || typeof quoteWrap !== "object" || Array.isArray(quoteWrap)) return null;
+  if (own(quoteWrap, "body") && quoteWrap.body != null && typeof quoteWrap.body === "object" && !Array.isArray(quoteWrap.body)) {
+    return quoteWrap.body;
+  }
+  if (own(quoteWrap, "json") && quoteWrap.json != null && typeof quoteWrap.json === "object" && !Array.isArray(quoteWrap.json)) {
+    return quoteWrap.json;
+  }
+  if (own(quoteWrap, "rail") || own(quoteWrap, "checkout") || own(quoteWrap, "checkout_url") || own(quoteWrap, "cart") || own(quoteWrap, "cart_url")) {
+    return quoteWrap;
+  }
+  return null;
 }
 
 function sameAddr(a, b) {
@@ -234,7 +252,7 @@ export function evaluateDone(bundle, opts = {}) {
   const now = opts.now ?? Date.now();
   const mandate = bundle && typeof bundle === "object" ? bundle.mandate : null;
   const quoteWrap = bundle && typeof bundle === "object" ? bundle.quote : null;
-  const quote = quoteWrap && typeof quoteWrap === "object" ? (quoteWrap.body ?? null) : null;
+  const quote = unwrapQuote(quoteWrap);
 
   if (!validateMandate(mandate).ok) failed.push("mandate_schema");
   if (!verifyMandate(mandate, opts.issuerPublicKey).ok) failed.push("mandate_signature");

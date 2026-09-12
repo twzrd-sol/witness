@@ -73,7 +73,7 @@ settlement/delivery, or prevent reuse within the signed validity window.
 From this worktree with Node 24 on PATH:
 
 ```sh
-node --test test/shopping-completion.test.js test/shopping-preapproval.test.js test/shopping-mandate.test.js
+node --test test/shopping-completion.test.js test/shopping-preapproval.test.js test/shopping-mandate.test.js test/human-checkout-untouched.test.js
 npm test
 git diff --check
 ```
