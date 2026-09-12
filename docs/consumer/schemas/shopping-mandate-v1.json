@@ -1,0 +1,139 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://witness.outbid.sh/schemas/shopping-mandate-v1.json",
+  "title": "Witness shopping mandate (digital-product pilot)",
+  "description": "Operator-signed, subject-bound spend authority for the narrow x402 digital-product pilot. No Shopify store URL, cart permalink, or merchant checkout URL is required or permitted on this document. Operator env SHOPIFY_STORE_URL is a separate no-op until set (see shopify-store-url-env-v1.json) and is never copied here. Validate this schema before signature verification. Caller-supplied public keys are never a trust anchor — the issuer pin is supplied independently.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "audience",
+    "issuer_kid",
+    "subject",
+    "mandate_id",
+    "offer_id",
+    "merchant",
+    "payee",
+    "product",
+    "quantity",
+    "currency",
+    "max_total_minor",
+    "expires_at",
+    "recurring",
+    "rail"
+  ],
+  "properties": {
+    "schema": {
+      "const": "witness.shopping_mandate.v1",
+      "description": "Domain version. An observation receipt or delivery attestation is not a mandate."
+    },
+    "audience": {
+      "const": "witness.shopping.digital_product",
+      "description": "This encoding is the x402 digital-product pilot only."
+    },
+    "issuer_kid": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9._:-]+$",
+      "description": "Issuer key id. Not a public key. The verify pin is out of band."
+    },
+    "subject": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "description": "Bound agent or buyer subject. Compared to the actor that presents the mandate."
+    },
+    "mandate_id": {
+      "type": "string",
+      "minLength": 8,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9._:-]+$"
+    },
+    "offer_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "description": "Witness catalog offer id on the x402 rail (e.g. outbid-reader-scrape)."
+    },
+    "merchant": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "payee": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "description": "Settlement destination the catalog vouches for. A display name is not identity."
+    },
+    "product": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "description": "Product or variant identity on the digital rail. Not a Shopify variant id."
+    },
+    "quantity": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 99
+    },
+    "currency": {
+      "const": "USDC",
+      "description": "Pilot is USDC only. Fiat/card rails are the human-checkout path and out of scope."
+    },
+    "max_total_minor": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 10000000,
+      "description": "Cumulative ceiling in integer minor units (atomic USDC, 6 dp). One quoted call plus reserved spend must not exceed this."
+    },
+    "expires_at": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,3})?Z$",
+      "description": "UTC expiry. Checked at Done evaluation, not at signing."
+    },
+    "recurring": {
+      "const": "never",
+      "description": "Pilot forbids recurring charges."
+    },
+    "rail": {
+      "const": "x402",
+      "description": "merchant_checkout / merchant_hosted is the human rail and cannot satisfy this mandate."
+    },
+    "resource_url": {
+      "type": "string",
+      "pattern": "^https://",
+      "maxLength": 2048,
+      "description": "Optional https resource scope. Exact path or child path on the same origin. Not a storefront URL."
+    },
+    "network": {
+      "type": "string",
+      "enum": ["eip155:8453", "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"]
+    },
+    "asset": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "description": "Optional mint or contract the quote must still name."
+    },
+    "purpose": {
+      "type": "string",
+      "enum": ["research_api", "software", "digital_deliverable"]
+    },
+    "license_url": {
+      "type": ["string", "null"],
+      "pattern": "^https://"
+    },
+    "terms_digest": {
+      "type": ["string", "null"],
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "sha256 hex of the license/terms bytes. A URL alone is not a commitment."
+    },
+    "signature": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Optional Ed25519 signature (base64) over the signing domain plus canonical body. Present after signMandate. Not sufficient for Done by itself."
+    }
+  }
+}

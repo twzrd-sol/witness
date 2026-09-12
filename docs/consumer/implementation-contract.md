@@ -2,6 +2,8 @@
 
 2026-09-10. Reviewable implementation target; not a statement of shipped functionality.
 
+> **Superseded for the HTTP surface (2026-09-10, later the same day).** The shipped routes follow the Claude Commerce Agents shape — catalog record, cart, merchant-hosted `checkout_url` — without the `handoff_required` / `authorization:null` / `enforcement_scope` stamps described below. See `claude-commerce-agents.md`. The mandate, quote-binding, and durable-decision sections remain the target for any future TWZRD-authorized payment path.
+
 ## First offer
 
 Pixel Surplus, Vintage Polaroid Photo Frames, Desktop Commercial Use License, variant `46117070209071`. Catalog observed USD 600 minor units on 2026-09-10. The observed price is not a final quote. Public product: `https://pixelsurplus.com/products/vintage-polaroid-photo-frames`. Catalog-returned cart permalink: `https://pixel-surplus.myshopify.com/cart/46117070209071:1`.
@@ -24,6 +26,8 @@ The reusable task asks an agent to obtain the correctly licensed pack, use it in
 ## Mandate and quote binding
 
 Canonical signed mandate fields: schema/domain version, audience, issuer key ID, subject, mandate ID, offer ID, merchant identity, payee identity, product/variant ID, quantity, currency, cumulative maximum total in integer minor units, expiry, recurring policy, license URL and license/terms content digest. Validate schema before verification and policy evaluation; caller-supplied public keys are never a trust anchor.
+
+The digital-product (x402) pilot encoding of those fields is [`shopping-mandate-v1.json`](schemas/shopping-mandate-v1.json) / [`shopping-mandate.md`](shopping-mandate.md). That schema does not require a Shopify store URL. Operator env `SHOPIFY_STORE_URL` is a no-op until set and is never a mandate field. Merchant-hosted checkout remains the human rail in `src/offers.js` and cannot satisfy this Done-gate.
 
 The final quote comes from the server's configured merchant adapter, not the caller's JSON. It must include all applicable tax, delivery and service fees; bind the quote to the authenticated subject and selected variant/quantity. Persist immutable quote IDs and content digests. A terms URL alone is not a commitment to its changing contents. A merchant display name is not a cryptographic merchant/payee identity.
 

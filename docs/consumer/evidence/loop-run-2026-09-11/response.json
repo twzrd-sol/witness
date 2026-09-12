@@ -1,0 +1,22 @@
+{
+  "status": 200,
+  "headers": {
+    "alt-svc": "h3=\":443\"; ma=86400",
+    "cache-control": "private",
+    "cf-cache-status": "DYNAMIC",
+    "cf-ray": "a39558f1f9d6f0aa-DFW",
+    "connection": "keep-alive",
+    "content-encoding": "br",
+    "content-type": "application/json; charset=utf-8",
+    "date": "Fri, 11 Sep 2026 08:36:55 GMT",
+    "etag": "W/\"17d-Vs5WW3qdlGVz11KMziOoSvVdLM4\"",
+    "nel": "{\"report_to\":\"cf-nel\",\"success_fraction\":0.0,\"max_age\":604800}",
+    "payment-response": "eyJzdWNjZXNzIjp0cnVlLCJwYXllciI6IjMzVzhISnJxQ1B5SnNhQm5WUGQyNEFWSzJ3WVVmM1ZMTHV0WHBweUF5V01vIiwidHJhbnNhY3Rpb24iOiI1ZTZNSkJxN21Rb2FSNW9HbVE2RWN2cUhaN0tWdmZ0a21uaHFaZTE4ZWRFR0VjZHRRM3djcHJOWWdreHQ4ZWhOeEJIaFQzS1U3Y2JDTThkUWJON2UxMXlBIiwibmV0d29yayI6InNvbGFuYTo1ZXlrdDRVc0Z2OFA4TkpkVFJFcFkxdnpxS3FaS3ZkcCJ9",
+    "report-to": "{\"group\":\"cf-nel\",\"max_age\":604800,\"endpoints\":[{\"url\":\"https://a.nel.cloudflare.com/report/v4?s=DHSUbU1R7IEr40Al0oX5GWGooUzZzq2yRWs%2Bb%2FB78iiuHwgLE%2FoRxhDMgpiNmOukJvYOUDZS6qpH8qTJSde%2BnJZD0NB5%2BUU%2BEhcCcuokVKIHXg3RT2DikzxJPeeNh84CpGZhbkNcgr6Tdbs45E%2B5\"}]}",
+    "server": "cloudflare",
+    "transfer-encoding": "chunked",
+    "x-powered-by": "Express"
+  },
+  "body_text": "{\"ok\":true,\"title\":\"Example Domain\",\"content\":\"This domain is for use in documentation examples without needing permission. Avoid use in operations.\\n\\n[Learn more](https://iana.org/domains/example)\",\"markdown\":\"This domain is for use in documentation examples without needing permission. Avoid use in operations.\\n\\n[Learn more](https://iana.org/domains/example)\",\"word_count\":16}",
+  "received_at": "2026-09-11T08:36:55.848Z"
+}

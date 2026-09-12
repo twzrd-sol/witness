@@ -1,0 +1,6 @@
+{
+  "method": "GET",
+  "url": "https://reader.outbid.sh/scrape?url=https%3A%2F%2Fexample.com",
+  "body": null,
+  "requested_at": "2026-09-11T08:36:54.213Z"
+}

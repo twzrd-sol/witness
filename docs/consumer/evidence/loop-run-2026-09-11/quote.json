@@ -1,0 +1,42 @@
+{
+  "status": 200,
+  "body": {
+    "offer_id": "outbid-reader-scrape",
+    "rail": "x402",
+    "merchant": "outbid",
+    "request": {
+      "method": "GET",
+      "url": "https://reader.outbid.sh/scrape?url=https%3A%2F%2Fexample.com"
+    },
+    "price": {
+      "amount_atomic": "5000",
+      "asset": "USDC",
+      "usd": "0.005"
+    },
+    "checkout": "x402",
+    "accepts": [
+      {
+        "scheme": "exact",
+        "network": "eip155:8453",
+        "amount": "5000",
+        "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        "payTo": "0x14df772BD496bBb7f49Bc3E992Ce13B2c441177F"
+      },
+      {
+        "scheme": "exact",
+        "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+        "amount": "5000",
+        "asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "payTo": "F1AbWuXJcBT9arW9wc6Xr2vom5NBtngWsz6Ht16jRBLM"
+      }
+    ],
+    "gate": {
+      "status": "passed",
+      "reason": "challenge_matches_catalog",
+      "x402Version": 2,
+      "probed_at": "2026-09-11T08:36:54.101Z",
+      "cached": false
+    }
+  },
+  "at": "2026-09-11T08:36:54.139Z"
+}

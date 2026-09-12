@@ -7,9 +7,11 @@ import { buildEvidenceBundle, classifyVerdict } from "./evidence.js";
 import { appendObservation, compareReceipts, methodFromRequest, readObservations, specHash, VALID_FOR_MS } from "./observatory.js";
 import { renderStarMap } from "./star-map.js";
 import { funnelOutcome, funnelReason, funnelSpecHash, funnelVerdict, recordFunnel } from "./funnel.js";
+import { createOffersRouter } from "./routes/offers.js";
+import { createDeliveryRouter } from "./routes/delivery.js";
+import { createPayoutClaimRouter } from "./routes/payout-claim.js";
 import { createSellerRouter } from "./routes/seller.js";
 import { createBountiesRouter } from "./routes/bounties.js";
-import { createOffersRouter } from "./routes/offers.js";
 import { paymentMiddleware } from "@x402/express";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { x402ResourceServer, HTTPFacilitatorClient } from "@x402/core/server";
@@ -52,12 +54,48 @@ function paymentMiddlewareWithBody(routes, rs) {
   };
 }
 
-/** Paywall route options per rail (v2 style: middleware builds requirements). */
-export function witnessAccepts({ evmAddress, svmAddress } = {}) {
+/** Paywall route options per rail at one price (v2 style: middleware builds requirements). */
+export function railAccepts(price, { evmAddress, svmAddress } = {}) {
   const a = [];
-  if (evmAddress) a.push({ scheme: "exact", network: EVM_NET, price: "$0.01", payTo: evmAddress, maxTimeoutSeconds: 300 });
-  if (svmAddress) a.push({ scheme: "exact", network: SVM_NET, price: "$0.01", payTo: svmAddress, maxTimeoutSeconds: 300 });
+  if (evmAddress) a.push({ scheme: "exact", network: EVM_NET, price, payTo: evmAddress, maxTimeoutSeconds: 300 });
+  if (svmAddress) a.push({ scheme: "exact", network: SVM_NET, price, payTo: svmAddress, maxTimeoutSeconds: 300 });
   return a;
+}
+
+export function witnessAccepts(paywall = {}) {
+  return railAccepts("$0.01", paywall);
+}
+
+/**
+ * Fixed-window per-key limiter: `limit` hits per window, default 30 when unset or
+ * invalid. Memory is bounded, not just budgets: an expired window is dropped on the
+ * next access from its key; when the map reaches `cap` every expired window is
+ * swept; and if it is still at cap the map is cleared (budgets reset, nothing
+ * else). Keys are real client addresses behind the tunnel, so a caller minting a
+ * fresh address per request (an IPv6 block is enough) can hold at most `cap`
+ * windows in memory, never a window per address for the life of the process.
+ */
+export function perMinuteLimiter(configured, fallback = 30, { now = Date.now, cap = 10_000, windowMs = 60_000 } = {}) {
+  const n = Number(configured ?? fallback);
+  const limit = Number.isInteger(n) && n > 0 ? n : fallback;
+  const hits = new Map();
+  const sweep = (t) => {
+    for (const [k, v] of hits) if (t - v.startedAt >= windowMs) hits.delete(k);
+    if (hits.size >= cap) hits.clear();
+  };
+  const allowed = (key) => {
+    const t = now();
+    const prior = hits.get(key);
+    const live = prior && t - prior.startedAt < windowMs ? prior : null;
+    if (prior && !live) hits.delete(key);
+    if (!live && hits.size >= cap) sweep(t);
+    const h = live ?? { startedAt: t, count: 0 };
+    h.count += 1;
+    hits.set(key, h);
+    return h.count <= limit;
+  };
+  allowed.size = () => hits.size;
+  return allowed;
 }
 
 function processKey(deps) {
@@ -269,21 +307,50 @@ export async function handleWitness(body, deps = {}) {
 export function createApp(deps = {}) {
   const key = processKey(deps);
   const wired = { ...deps, key, observationsDir: deps.observationsDir ?? "data" };
-  const resourceUrl = `${deps.publicBaseUrl || "https://witness.outbid.sh"}/witness`;
+  const publicBase = deps.publicBaseUrl || "https://witness.outbid.sh";
+  const resourceUrl = `${publicBase}/witness`;
   const app = express();
+  // The host binds loopback and only the tunnel reaches it, so every socket is
+  // 127.0.0.1. Trusting loopback makes req.ip the forwarded client address (the
+  // rightmost, tunnel-appended entry, so a client-supplied chain cannot pick its
+  // own bucket), and the per-IP budgets (quote, offers gate, attest) per client
+  // instead of one bucket shared by everyone behind the tunnel. Without a forwarded
+  // header (tests, direct loopback callers) req.ip stays the socket address; a
+  // process on this box could forge one, which is the same trust loopback already
+  // carries for the socket itself.
+  app.set("trust proxy", "loopback");
   const funnelDir = deps.funnelDir === undefined ? wired.observationsDir : deps.funnelDir;
-  const quoteHits = new Map();
-  const configuredQuoteLimit = Number(deps.quoteRateLimit ?? process.env.QUOTE_RATE_LIMIT_PER_MINUTE ?? 30);
-  const quoteLimit = Number.isInteger(configuredQuoteLimit) && configuredQuoteLimit > 0 ? configuredQuoteLimit : 30;
-  const quoteWindowMs = 60_000;
-  const quoteAllowed = (ip) => {
-    const now = Date.now();
-    const prior = quoteHits.get(ip);
-    const hits = prior && now - prior.startedAt < quoteWindowMs ? prior : { startedAt: now, count: 0 };
-    hits.count += 1;
-    quoteHits.set(ip, hits);
-    return hits.count <= quoteLimit;
-  };
+  // Every /quote (and every offers-gate miss) can cost the operator a paid reader
+  // call. Budgets are per client, and since trust proxy made clients distinguishable
+  // the aggregate would otherwise be unbounded: before it, the single loopback bucket
+  // was an accidental global cap of 30/min. The busiest minute in ten days of funnel
+  // logs was 32, so a 60/min ceiling across all clients bounds spend without one
+  // client starving the rest. Both are env-tunable.
+  const quotePerClient = perMinuteLimiter(deps.quoteRateLimit ?? process.env.QUOTE_RATE_LIMIT_PER_MINUTE);
+  const quoteGlobal = perMinuteLimiter(deps.quoteGlobalRateLimit ?? process.env.QUOTE_RATE_LIMIT_GLOBAL_PER_MINUTE, 60);
+  const quoteAllowed = (ip) => quotePerClient(ip) && quoteGlobal("*");
+  // Attestation has its own budget: a signing is not a probe, and one limiter shared
+  // across both would let a burst of free quotes starve attestations, or the reverse.
+  // It counts payment-carrying requests only when a paywall is in front (see the
+  // delivery router), and signing costs the operator nothing, so no global cap here.
+  const attestAllowed = perMinuteLimiter(deps.attestRateLimit ?? process.env.ATTEST_RATE_LIMIT_PER_MINUTE);
+  const accepts = witnessAccepts(deps.paywall);
+  // One resource server for every paid route, built before the delivery router is
+  // mounted so attestation stands behind the same facilitator and rails as /witness.
+  let rs = null;
+  if (accepts.length) {
+    const facilitator = deps.facilitator ?? new HTTPFacilitatorClient({ url: deps.facilitatorUrl || "https://facilitator.payai.network" });
+    rs = new x402ResourceServer(facilitator);
+    if (deps.paywall.evmAddress) rs.register(EVM_NET, new ExactEvmScheme());
+    if (deps.paywall.svmAddress) rs.register(SVM_NET, new ExactSvmScheme());
+  }
+  // Delivery attestation is paid at the /witness price when the host has a paywall:
+  // the signed receipt is the product on this route too, and a free signing oracle on
+  // a public host is a cost with no counterparty. Without a paywall (tests, embedders,
+  // the in-process examples) the route serves unpaid but stays per-IP limited.
+  const attestPaywall = rs
+    ? paymentMiddlewareWithBody({ "POST /delivery/attest": { resource: `${publicBase}/delivery/attest`, accepts, mimeType: "application/json", description: "Delivery attestation — signed receipt for one paid call. $0.01 USDC.", serviceName: "witness", tags: ["delivery", "receipt", "x402"] } }, rs)
+    : null;
   app.use((req, res, next) => {
     if (req.method !== "POST" || (req.path !== "/quote" && req.path !== "/witness")) return next();
     // Every reply (handlers, bad_json, 402 challenge) is written via res.json: read its enum reason there.
@@ -309,28 +376,11 @@ export function createApp(deps = {}) {
     });
     next();
   });
-  // Dedicated body parser for /witness: catches parse errors and issues envelope.
-  app.post("/witness", (req, res, next) => {
-    express.json({ limit: "64kb" })(req, res, (err) => {
-      if (err && err.type === "entity.parse.failed") {
-        const accepts = witnessAccepts(deps.paywall);
-        return res.status(402).json({
-          x402Version: 2,
-          accepts,
-          resource: {
-            url: `${deps.publicBaseUrl || "https://witness.outbid.sh"}/witness`,
-            serviceName: "witness", tags: ["observation", "receipt", "x402", "empiricism"] },
-          extensions: deps.extensions || {},
-          error: "Payment required"
-        });
-      }
-      next();
-    });
-  });
-
-  // Standard body parser for all other routes.
+  // Delivery attestation: mounted ahead of the host JSON parser so the route owns its body
+  // errors (bad_json / body_too_large in its own envelope). The evidence model (src/delivery.js)
+  // is resolved lazily inside the router; deps.attest overrides it for tests and embedders.
+  app.use(createDeliveryRouter({ key, attest: deps.attest, importModel: deps.importModel, now: deps.now, verifier: deps.verifier ?? new URL(publicBase).host, maxStalenessSeconds: deps.maxStalenessSeconds, attestAllowed, paywall: attestPaywall }));
   app.use((req, res, next) => {
-    if (req.path === "/witness" && req.method === "POST") return next();
     express.json({ limit: "64kb", strict: !req.path.startsWith("/seller/") })(req, res, next);
   });
   const reply = (res, out) => res.status(out.status).json(out.json);
@@ -342,9 +392,9 @@ export function createApp(deps = {}) {
   // post/claim/complete. No money movement, no token — settlement is
   // out of band; the board records offers and explicit outcome rows.
   app.use(createBountiesRouter({ storeDir: deps.bountiesDir ?? wired.observationsDir }));
-  // Consumer pilot offers: static handoff pages + quote stub. No adapter,
-  // no reservation, no payment — the buyer checks out at the merchant.
-  app.use(createOffersRouter());
+  // Consumer offers: catalog, cart, and a gated checkout handoff. The gate
+  // reuses handleQuote (free path) and the /quote per-IP limiter.
+  app.use(createOffersRouter({ ...wired, handleQuote, quoteAllowed, probeFetch: deps.probeFetch, gateTtlMs: deps.gateTtlMs }));
   // Express 4 drops a rejected async handler on the floor: the request hangs and the
   // process dies on the unhandled rejection. Route every rejection to the 500 handler.
   const guard = (fn) => (req, res, next) => fn(req, res, next).catch(next);
@@ -362,7 +412,6 @@ export function createApp(deps = {}) {
   app.post("/quote", limitQuoteProbes, guard(async (req, res) => {
     return reply(res, await handleQuote(req.body, wired));
   }));
-  const accepts = witnessAccepts(deps.paywall);
   if (accepts.length) {
     const bazaar = declareDiscoveryExtension({
       bodyType: "json",
@@ -386,10 +435,6 @@ export function createApp(deps = {}) {
         },
       },
     });
-    const facilitator = deps.facilitator ?? new HTTPFacilitatorClient({ url: deps.facilitatorUrl || "https://facilitator.payai.network" });
-    const rs = new x402ResourceServer(facilitator);
-    if (deps.paywall.evmAddress) rs.register(EVM_NET, new ExactEvmScheme());
-    if (deps.paywall.svmAddress) rs.register(SVM_NET, new ExactSvmScheme());
     // Deliverability-first: every POST, including ones that already carry a
     // payment header, runs the quote before the facilitator. A 422 never
     // settles. The successful quote is reused so the paid handler does not
@@ -412,9 +457,10 @@ export function createApp(deps = {}) {
   } else {
     app.post("/witness", limitQuoteProbes, witness);
   }
+  // Payout-claim verification rides the same paywall and key at its own price.
+  app.use(createPayoutClaimRouter(wired, { accepts: railAccepts("$0.05", deps.paywall), paymentMiddlewareWithBody, resourceServer: rs, publicBaseUrl: deps.publicBaseUrl, funnelDir, quoteRateLimit: deps.payoutQuoteRateLimit }));
   app.use((err, _req, res, next) => {
     if (err && (err.type === "entity.parse.failed" || (err instanceof SyntaxError && err.status === 400 && "body" in err))) {
-      // Seller callers parse one wrapper shape: keep malformed JSON inside it.
       if (_req && typeof _req.path === "string" && _req.path.startsWith("/seller/")) {
         return res.status(400).json({ success: false, error: { reason: "bad_json", details: [{ field: "offer", reason: "object_required" }] }, data: null });
       }

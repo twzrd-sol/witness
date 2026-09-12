@@ -3,14 +3,19 @@ import assert from "node:assert";
 import { mkdtempSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { createHostApp, readerPayment } from "../src/listen.js";
+import { createHostApp, listenExclusive, readerPayment } from "../src/listen.js";
 import { fillExtract } from "../src/extract.js";
 import { evalAssertion } from "../src/receipt.js";
 
 async function withServer(env, fn, opts = {}) {
   const dir = env.OBSERVATIONS_DIR || mkdtempSync(path.join(os.tmpdir(), "wit-host-"));
-  const server = createHostApp({ ...env, OBSERVATIONS_DIR: dir }, opts).listen(0, "127.0.0.1");
-  await new Promise((r) => server.once("listening", r));
+  const app = createHostApp({ ...env, OBSERVATIONS_DIR: dir }, opts);
+  const server = await new Promise((resolve, reject) => {
+    const s = listenExclusive(app, { port: 0 }, {
+      onListening: () => resolve(s),
+      onError: (e) => reject(new Error(`host listen failed (${e.code}): ${e.message}`, { cause: e })),
+    });
+  });
   try { return await fn(`http://127.0.0.1:${server.address().port}`); }
   finally { await new Promise((r) => server.close(r)); }
 }
@@ -48,8 +53,11 @@ test("discovery GETs: robots, llms, skill, well-knowns (200, no pay)", async () 
       "https://pypi.org/pypi/requests/json": JSON.stringify({ info: { version: "2.32.5" } }),
       "https://jsonplaceholder.typicode.com/todos/1": JSON.stringify({ userId: 1, id: 1, title: "delectus aut autem" }),
     };
-    assert.ok(blocks.length >= 5, "five method blocks documented");
-    for (const method of blocks) {
+    const observationBlocks = blocks.filter((m) => m.url && m.extract);
+    assert.ok(observationBlocks.length >= 5, "five method blocks documented");
+    assert.match(llms, /\/verify\/payout/, "llms documents payout-claim verification");
+    assert.ok(blocks.some((m) => m.claim_url && m.claim && m.wallet), "llms carries a payout-claim example distinct from observation methods");
+    for (const method of observationBlocks) {
       const fixture = fixtures[method.url];
       assert.ok(fixture, `representative fixture for documented url ${method.url}`);
       const { values, missing } = fillExtract(fixture, method.extract);
