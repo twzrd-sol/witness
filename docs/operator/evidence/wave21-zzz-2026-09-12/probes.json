@@ -1,0 +1,829 @@
+{
+  "wave": "21-ZZZ",
+  "host": "https://witness.outbid.sh",
+  "ran_at": "2026-09-12T18:10:08.081Z",
+  "ok": true,
+  "failed": [],
+  "spend": {
+    "spend": false,
+    "reason": "wash_unevaluated"
+  },
+  "payerPath": null,
+  "payTos": [
+    "F1AbWuXJcBT9arW9wc6Xr2vom5NBtngWsz6Ht16jRBLM"
+  ],
+  "checks": [
+    {
+      "name": "live_host_allowed",
+      "pass": true,
+      "detail": "https://witness.outbid.sh",
+      "code": null
+    },
+    {
+      "name": "discovery_pubkey",
+      "pass": true,
+      "detail": "status 200",
+      "code": null
+    },
+    {
+      "name": "discovery_well_known",
+      "pass": true,
+      "detail": "status 200",
+      "code": null
+    },
+    {
+      "name": "discovery_llms",
+      "pass": true,
+      "detail": "status 200 bytes=5143",
+      "code": null
+    },
+    {
+      "name": "discovery_openapi",
+      "pass": true,
+      "detail": "status 200",
+      "code": null
+    },
+    {
+      "name": "get_witness_402",
+      "pass": true,
+      "detail": "status 402",
+      "code": null
+    },
+    {
+      "name": "quote_never_402",
+      "pass": true,
+      "detail": "no quote 402",
+      "code": null
+    },
+    {
+      "name": "quote_documented_deliverable_or_honest",
+      "pass": true,
+      "detail": "status 200 {\"can_deliver\":true,\"price_usdc\":\"0.01\",\"retrieval\":\"scrape\",\"verdict\":\"supported\",\"verdict_reason\":null,\"has_receipt\":false}",
+      "code": null
+    },
+    {
+      "name": "quote_gate_method_deliverable_or_honest",
+      "pass": true,
+      "detail": "status 200 {\"can_deliver\":true,\"price_usdc\":\"0.01\",\"retrieval\":\"scrape\",\"verdict\":\"supported\",\"verdict_reason\":null,\"has_receipt\":false}",
+      "code": null
+    },
+    {
+      "name": "quote_bad_extract_400",
+      "pass": true,
+      "detail": "status 400 bad_extract",
+      "code": null
+    },
+    {
+      "name": "witness_unpaid_paywall_or_quote_first",
+      "pass": true,
+      "detail": "doc 402 gate 402",
+      "code": null
+    },
+    {
+      "name": "witness_challenge_names_resource",
+      "pass": true,
+      "detail": "resource https://witness.outbid.sh/witness",
+      "code": null
+    },
+    {
+      "name": "witness_challenge_price",
+      "pass": true,
+      "detail": "[\"10000\",\"10000\"]",
+      "code": null
+    },
+    {
+      "name": "witness_challenge_both_rails",
+      "pass": true,
+      "detail": "v=2 nets=[\"eip155:8453\",\"solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp\"]",
+      "code": null
+    },
+    {
+      "name": "witness_bad_extract_never_402",
+      "pass": true,
+      "detail": "status 400",
+      "code": null
+    },
+    {
+      "name": "witness_forged_does_not_unlock",
+      "pass": true,
+      "detail": "status 402",
+      "code": null
+    },
+    {
+      "name": "witness_unpaid_no_receipt",
+      "pass": true,
+      "detail": "no signed receipt on unpaid/forged witness",
+      "code": null
+    },
+    {
+      "name": "attest_unpaid_402",
+      "pass": true,
+      "detail": "status 402",
+      "code": null
+    },
+    {
+      "name": "attest_challenge_names_resource",
+      "pass": true,
+      "detail": "resource https://witness.outbid.sh/delivery/attest",
+      "code": null
+    },
+    {
+      "name": "attest_challenge_price",
+      "pass": true,
+      "detail": "[\"10000\",\"10000\"]",
+      "code": null
+    },
+    {
+      "name": "attest_challenge_both_rails",
+      "pass": true,
+      "detail": "v=2 nets=[\"eip155:8453\",\"solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp\"]",
+      "code": null
+    },
+    {
+      "name": "attest_shape_never_402",
+      "pass": true,
+      "detail": "status 400 bad_offer",
+      "code": null
+    },
+    {
+      "name": "attest_forged_does_not_unlock",
+      "pass": true,
+      "detail": "status 402",
+      "code": null
+    },
+    {
+      "name": "attest_unpaid_no_receipt",
+      "pass": true,
+      "detail": "no signed receipt on unpaid/forged attest",
+      "code": null
+    },
+    {
+      "name": "done_gate_dry_not_complete",
+      "pass": true,
+      "detail": "completion=incomplete checkout=false sim_approve=true",
+      "code": null
+    },
+    {
+      "name": "done_gate_unpaid_not_approved",
+      "pass": true,
+      "detail": "unpaid GATE_METHOD witness 402; checkout_approved=false",
+      "code": null
+    },
+    {
+      "name": "preflight_ran",
+      "pass": true,
+      "detail": "payTos=1",
+      "code": null
+    },
+    {
+      "name": "wash_fail_closed",
+      "pass": true,
+      "detail": "wash_unevaluated",
+      "code": null
+    },
+    {
+      "name": "no_invented_payer",
+      "pass": true,
+      "detail": "none",
+      "code": null
+    },
+    {
+      "name": "spend_logged",
+      "pass": true,
+      "detail": "no USDC moved; wash_unevaluated",
+      "code": null
+    }
+  ],
+  "probes": [
+    {
+      "name": "GET /pubkey",
+      "url": "https://witness.outbid.sh/pubkey",
+      "method": "GET",
+      "status": 200,
+      "challenge": null,
+      "body": {
+        "pubkey": "MCowBQYDK2VwAyEAsNLRfVqG4dFcfD9/OP8BSKTBRlTEOWhg19kHTNfyQlg=",
+        "has_receipt": false
+      },
+      "text_len": 73,
+      "header_names": [
+        "alt-svc",
+        "cf-cache-status",
+        "cf-ray",
+        "connection",
+        "content-encoding",
+        "content-type",
+        "date",
+        "etag",
+        "nel",
+        "report-to",
+        "server",
+        "transfer-encoding",
+        "x-powered-by"
+      ],
+      "has_payment_required": false,
+      "has_receipt": false
+    },
+    {
+      "name": "GET /.well-known/x402",
+      "url": "https://witness.outbid.sh/.well-known/x402",
+      "method": "GET",
+      "status": 200,
+      "challenge": null,
+      "body": {
+        "price_usdc": "0.01",
+        "x402Version": 2,
+        "has_receipt": false
+      },
+      "text_len": 495,
+      "header_names": [
+        "alt-svc",
+        "cf-cache-status",
+        "cf-ray",
+        "connection",
+        "content-encoding",
+        "content-type",
+        "date",
+        "etag",
+        "nel",
+        "report-to",
+        "server",
+        "transfer-encoding",
+        "x-powered-by"
+      ],
+      "has_payment_required": false,
+      "has_receipt": false
+    },
+    {
+      "name": "GET /llms.txt",
+      "url": "https://witness.outbid.sh/llms.txt",
+      "method": "GET",
+      "status": 200,
+      "challenge": null,
+      "body": {
+        "text_len": 5143
+      },
+      "text_len": 5143,
+      "header_names": [
+        "alt-svc",
+        "cf-cache-status",
+        "cf-ray",
+        "connection",
+        "content-encoding",
+        "content-type",
+        "date",
+        "etag",
+        "nel",
+        "report-to",
+        "server",
+        "transfer-encoding",
+        "x-powered-by"
+      ],
+      "has_payment_required": false,
+      "has_receipt": false
+    },
+    {
+      "name": "GET /openapi.json",
+      "url": "https://witness.outbid.sh/openapi.json",
+      "method": "GET",
+      "status": 200,
+      "challenge": null,
+      "body": {
+        "text_len": 72583
+      },
+      "text_len": 72583,
+      "header_names": [
+        "alt-svc",
+        "cf-cache-status",
+        "cf-ray",
+        "connection",
+        "content-encoding",
+        "content-type",
+        "date",
+        "etag",
+        "nel",
+        "report-to",
+        "server",
+        "transfer-encoding",
+        "x-powered-by"
+      ],
+      "has_payment_required": false,
+      "has_receipt": false
+    },
+    {
+      "name": "GET /witness",
+      "url": "https://witness.outbid.sh/witness",
+      "method": "GET",
+      "status": 402,
+      "challenge": {
+        "x402Version": 2,
+        "resource": "https://witness.outbid.sh/witness",
+        "accepts": [
+          {
+            "scheme": "exact",
+            "network": "eip155:8453",
+            "amount": "10000",
+            "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+            "payTo": "0x14df772BD496bBb7f49Bc3E992Ce13B2c441177F"
+          },
+          {
+            "scheme": "exact",
+            "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+            "amount": "10000",
+            "asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+            "payTo": "F1AbWuXJcBT9arW9wc6Xr2vom5NBtngWsz6Ht16jRBLM"
+          }
+        ]
+      },
+      "body": {
+        "x402Version": 2,
+        "error": "Payment required",
+        "has_receipt": false
+      },
+      "text_len": 817,
+      "header_names": [
+        "alt-svc",
+        "cache-control",
+        "cf-cache-status",
+        "cf-ray",
+        "connection",
+        "content-length",
+        "content-type",
+        "date",
+        "etag",
+        "nel",
+        "payment-required",
+        "report-to",
+        "server",
+        "x-powered-by"
+      ],
+      "has_payment_required": true,
+      "has_receipt": false
+    },
+    {
+      "name": "POST /quote documented",
+      "url": "https://witness.outbid.sh/quote",
+      "method": "POST",
+      "status": 200,
+      "challenge": null,
+      "body": {
+        "can_deliver": true,
+        "price_usdc": "0.01",
+        "retrieval": "scrape",
+        "verdict": "supported",
+        "verdict_reason": null,
+        "has_receipt": false
+      },
+      "text_len": 118,
+      "header_names": [
+        "alt-svc",
+        "cf-cache-status",
+        "cf-ray",
+        "connection",
+        "content-encoding",
+        "content-type",
+        "date",
+        "etag",
+        "nel",
+        "report-to",
+        "server",
+        "transfer-encoding",
+        "x-powered-by"
+      ],
+      "has_payment_required": false,
+      "has_receipt": false
+    },
+    {
+      "name": "POST /quote GATE_METHOD",
+      "url": "https://witness.outbid.sh/quote",
+      "method": "POST",
+      "status": 200,
+      "challenge": null,
+      "body": {
+        "can_deliver": true,
+        "price_usdc": "0.01",
+        "retrieval": "scrape",
+        "verdict": "supported",
+        "verdict_reason": null,
+        "has_receipt": false
+      },
+      "text_len": 118,
+      "header_names": [
+        "alt-svc",
+        "cf-cache-status",
+        "cf-ray",
+        "connection",
+        "content-encoding",
+        "content-type",
+        "date",
+        "etag",
+        "nel",
+        "report-to",
+        "server",
+        "transfer-encoding",
+        "x-powered-by"
+      ],
+      "has_payment_required": false,
+      "has_receipt": false
+    },
+    {
+      "name": "POST /quote bad_extract",
+      "url": "https://witness.outbid.sh/quote",
+      "method": "POST",
+      "status": 400,
+      "challenge": null,
+      "body": {
+        "reason": "bad_extract",
+        "has_receipt": false
+      },
+      "text_len": 131,
+      "header_names": [
+        "alt-svc",
+        "cf-cache-status",
+        "cf-ray",
+        "connection",
+        "content-length",
+        "content-type",
+        "date",
+        "etag",
+        "nel",
+        "report-to",
+        "server",
+        "x-powered-by"
+      ],
+      "has_payment_required": false,
+      "has_receipt": false
+    },
+    {
+      "name": "POST /witness unpaid documented",
+      "url": "https://witness.outbid.sh/witness",
+      "method": "POST",
+      "status": 402,
+      "challenge": {
+        "x402Version": 2,
+        "resource": "https://witness.outbid.sh/witness",
+        "accepts": [
+          {
+            "scheme": "exact",
+            "network": "eip155:8453",
+            "amount": "10000",
+            "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+            "payTo": "0x14df772BD496bBb7f49Bc3E992Ce13B2c441177F"
+          },
+          {
+            "scheme": "exact",
+            "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+            "amount": "10000",
+            "asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+            "payTo": "F1AbWuXJcBT9arW9wc6Xr2vom5NBtngWsz6Ht16jRBLM"
+          }
+        ]
+      },
+      "body": {
+        "x402Version": 2,
+        "error": "Payment required",
+        "has_receipt": false
+      },
+      "text_len": 2470,
+      "header_names": [
+        "alt-svc",
+        "cache-control",
+        "cf-cache-status",
+        "cf-ray",
+        "connection",
+        "content-length",
+        "content-type",
+        "date",
+        "etag",
+        "nel",
+        "payment-required",
+        "report-to",
+        "server",
+        "x-powered-by"
+      ],
+      "has_payment_required": true,
+      "has_receipt": false
+    },
+    {
+      "name": "POST /witness unpaid GATE_METHOD",
+      "url": "https://witness.outbid.sh/witness",
+      "method": "POST",
+      "status": 402,
+      "challenge": {
+        "x402Version": 2,
+        "resource": "https://witness.outbid.sh/witness",
+        "accepts": [
+          {
+            "scheme": "exact",
+            "network": "eip155:8453",
+            "amount": "10000",
+            "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+            "payTo": "0x14df772BD496bBb7f49Bc3E992Ce13B2c441177F"
+          },
+          {
+            "scheme": "exact",
+            "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+            "amount": "10000",
+            "asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+            "payTo": "F1AbWuXJcBT9arW9wc6Xr2vom5NBtngWsz6Ht16jRBLM"
+          }
+        ]
+      },
+      "body": {
+        "x402Version": 2,
+        "error": "Payment required",
+        "has_receipt": false
+      },
+      "text_len": 2470,
+      "header_names": [
+        "alt-svc",
+        "cache-control",
+        "cf-cache-status",
+        "cf-ray",
+        "connection",
+        "content-length",
+        "content-type",
+        "date",
+        "etag",
+        "nel",
+        "payment-required",
+        "report-to",
+        "server",
+        "x-powered-by"
+      ],
+      "has_payment_required": true,
+      "has_receipt": false
+    },
+    {
+      "name": "POST /witness bad_extract",
+      "url": "https://witness.outbid.sh/witness",
+      "method": "POST",
+      "status": 400,
+      "challenge": null,
+      "body": {
+        "reason": "bad_extract",
+        "has_receipt": false
+      },
+      "text_len": 131,
+      "header_names": [
+        "alt-svc",
+        "cf-cache-status",
+        "cf-ray",
+        "connection",
+        "content-length",
+        "content-type",
+        "date",
+        "etag",
+        "nel",
+        "report-to",
+        "server",
+        "x-powered-by"
+      ],
+      "has_payment_required": false,
+      "has_receipt": false
+    },
+    {
+      "name": "POST /witness forged payment-signature",
+      "url": "https://witness.outbid.sh/witness",
+      "method": "POST",
+      "status": 402,
+      "challenge": {
+        "x402Version": 2,
+        "resource": "https://witness.outbid.sh/witness",
+        "accepts": [
+          {
+            "scheme": "exact",
+            "network": "eip155:8453",
+            "amount": "10000",
+            "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+            "payTo": "0x14df772BD496bBb7f49Bc3E992Ce13B2c441177F"
+          },
+          {
+            "scheme": "exact",
+            "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+            "amount": "10000",
+            "asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+            "payTo": "F1AbWuXJcBT9arW9wc6Xr2vom5NBtngWsz6Ht16jRBLM"
+          }
+        ]
+      },
+      "body": {
+        "x402Version": 2,
+        "error": "Payment required",
+        "has_receipt": false
+      },
+      "text_len": 2470,
+      "header_names": [
+        "alt-svc",
+        "cache-control",
+        "cf-cache-status",
+        "cf-ray",
+        "connection",
+        "content-length",
+        "content-type",
+        "date",
+        "etag",
+        "nel",
+        "payment-required",
+        "report-to",
+        "server",
+        "x-powered-by"
+      ],
+      "has_payment_required": true,
+      "has_receipt": false
+    },
+    {
+      "name": "POST /delivery/attest unpaid",
+      "url": "https://witness.outbid.sh/delivery/attest",
+      "method": "POST",
+      "status": 402,
+      "challenge": {
+        "x402Version": 2,
+        "resource": "https://witness.outbid.sh/delivery/attest",
+        "accepts": [
+          {
+            "scheme": "exact",
+            "network": "eip155:8453",
+            "amount": "10000",
+            "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+            "payTo": "0x14df772BD496bBb7f49Bc3E992Ce13B2c441177F"
+          },
+          {
+            "scheme": "exact",
+            "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+            "amount": "10000",
+            "asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+            "payTo": "F1AbWuXJcBT9arW9wc6Xr2vom5NBtngWsz6Ht16jRBLM"
+          }
+        ]
+      },
+      "body": {
+        "x402Version": 2,
+        "error": "Payment required",
+        "has_receipt": false
+      },
+      "text_len": 817,
+      "header_names": [
+        "alt-svc",
+        "cache-control",
+        "cf-cache-status",
+        "cf-ray",
+        "connection",
+        "content-length",
+        "content-type",
+        "date",
+        "etag",
+        "nel",
+        "payment-required",
+        "report-to",
+        "server",
+        "x-powered-by"
+      ],
+      "has_payment_required": true,
+      "has_receipt": false
+    },
+    {
+      "name": "POST /delivery/attest off-shape",
+      "url": "https://witness.outbid.sh/delivery/attest",
+      "method": "POST",
+      "status": 400,
+      "challenge": null,
+      "body": {
+        "reason": "bad_offer",
+        "has_receipt": false
+      },
+      "text_len": 846,
+      "header_names": [
+        "alt-svc",
+        "cf-cache-status",
+        "cf-ray",
+        "connection",
+        "content-length",
+        "content-type",
+        "date",
+        "etag",
+        "nel",
+        "report-to",
+        "server",
+        "x-powered-by"
+      ],
+      "has_payment_required": false,
+      "has_receipt": false
+    },
+    {
+      "name": "POST /delivery/attest forged payment-signature",
+      "url": "https://witness.outbid.sh/delivery/attest",
+      "method": "POST",
+      "status": 402,
+      "challenge": {
+        "x402Version": 2,
+        "resource": "https://witness.outbid.sh/delivery/attest",
+        "accepts": [
+          {
+            "scheme": "exact",
+            "network": "eip155:8453",
+            "amount": "10000",
+            "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+            "payTo": "0x14df772BD496bBb7f49Bc3E992Ce13B2c441177F"
+          },
+          {
+            "scheme": "exact",
+            "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+            "amount": "10000",
+            "asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+            "payTo": "F1AbWuXJcBT9arW9wc6Xr2vom5NBtngWsz6Ht16jRBLM"
+          }
+        ]
+      },
+      "body": {
+        "x402Version": 2,
+        "error": "Payment required",
+        "has_receipt": false
+      },
+      "text_len": 817,
+      "header_names": [
+        "alt-svc",
+        "cache-control",
+        "cf-cache-status",
+        "cf-ray",
+        "connection",
+        "content-length",
+        "content-type",
+        "date",
+        "etag",
+        "nel",
+        "payment-required",
+        "report-to",
+        "server",
+        "x-powered-by"
+      ],
+      "has_payment_required": true,
+      "has_receipt": false
+    },
+    {
+      "name": "GET /delivery/attest (expect 404; POST-only)",
+      "url": "https://witness.outbid.sh/delivery/attest",
+      "method": "GET",
+      "status": 404,
+      "challenge": null,
+      "body": null,
+      "text_len": 154,
+      "header_names": [
+        "alt-svc",
+        "cf-cache-status",
+        "cf-ray",
+        "connection",
+        "content-encoding",
+        "content-security-policy",
+        "content-type",
+        "date",
+        "nel",
+        "report-to",
+        "server",
+        "transfer-encoding",
+        "x-content-type-options",
+        "x-powered-by"
+      ],
+      "has_payment_required": false,
+      "has_receipt": false
+    },
+    {
+      "name": "Done-gate runOnce dry",
+      "status": 200,
+      "body": {
+        "mode": "dry",
+        "completion": "incomplete",
+        "checkout_approved": false,
+        "paid": false,
+        "payment_attempted": false,
+        "decision": {
+          "approve": true,
+          "reason": "verdict_supported"
+        },
+        "quote_can_deliver": true,
+        "quote_verdict": "supported"
+      }
+    },
+    {
+      "name": "TWZRD intel merchant_card+preflight",
+      "status": 200,
+      "body": {
+        "payTos": [
+          "F1AbWuXJcBT9arW9wc6Xr2vom5NBtngWsz6Ht16jRBLM"
+        ],
+        "merchant": {
+          "wash_flagged": null,
+          "decision": "insufficient_evidence"
+        },
+        "preflight": {
+          "decision": null,
+          "recommended_action": null,
+          "recommended_cap_usdc": null,
+          "maximum_recommended_spend_usdc": null,
+          "price_usdc": 0.01
+        },
+        "error": null
+      }
+    }
+  ]
+}

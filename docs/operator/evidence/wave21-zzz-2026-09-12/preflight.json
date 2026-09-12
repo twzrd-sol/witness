@@ -1,0 +1,55 @@
+{
+  "fetched_at": "2026-09-12T18:10:08.080Z",
+  "intel_origin": "https://intel.twzrd.xyz",
+  "payTos": [
+    "F1AbWuXJcBT9arW9wc6Xr2vom5NBtngWsz6Ht16jRBLM"
+  ],
+  "merchant_cards": [
+    {
+      "wallet": "F1AbWuXJcBT9arW9wc6Xr2vom5NBtngWsz6Ht16jRBLM",
+      "status": 200,
+      "body": {
+        "reason": "Real inbound demand observed, but the wash/circular-flow axis was not evaluated for this wallet (partial coverage, not an outage). Absence of a wash flag here is a coverage gap, not a clean bill - do not read this as 'no wash pattern'.",
+        "wash_flagged": null,
+        "decision": "insufficient_evidence",
+        "recommendation": "quick",
+        "confidence": "partial_inbound_only",
+        "merchant": "F1AbWuXJcBT9arW9wc6Xr2vom5NBtngWsz6Ht16jRBLM",
+        "has_receipt": false
+      },
+      "raw_keys": {
+        "reason": "Real inbound demand observed, but the wash/circular-flow axis was not evaluated for this wallet (partial coverage, not an outage). Absence of a wash flag here is a coverage gap, not a clean bill - do not read this as 'no wash pattern'.",
+        "wash_flagged": null,
+        "decision": "insufficient_evidence",
+        "recommendation": "quick",
+        "confidence": "partial_inbound_only",
+        "merchant": "F1AbWuXJcBT9arW9wc6Xr2vom5NBtngWsz6Ht16jRBLM",
+        "has_receipt": false
+      }
+    }
+  ],
+  "preflights": [
+    {
+      "wallet": "F1AbWuXJcBT9arW9wc6Xr2vom5NBtngWsz6Ht16jRBLM",
+      "status": 200,
+      "body": {
+        "has_receipt": false
+      }
+    }
+  ],
+  "merchant": {
+    "wash_flagged": null,
+    "decision": "insufficient_evidence"
+  },
+  "preflight": {
+    "decision": null,
+    "recommended_action": null,
+    "recommended_cap_usdc": null,
+    "maximum_recommended_spend_usdc": null,
+    "price_usdc": 0.01
+  },
+  "wash": {
+    "classification": "unknown",
+    "is_circular": false
+  }
+}
