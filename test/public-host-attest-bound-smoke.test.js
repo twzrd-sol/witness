@@ -13,7 +13,7 @@
  */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import { mkdtempSync, readFileSync } from "node:fs";
 import os from "node:os";
@@ -59,6 +59,19 @@ const refusingFacilitator = {
   async verify() { return { isValid: false, invalidReason: "fixture refuses every payment" }; },
   async settle() { throw new Error("bound smoke must not settle"); },
 };
+
+/** Async CLI so the in-process loopback host can still accept connections (spawnSync would stall it). */
+function runCli(args) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [SCRIPT, ...args], { stdio: ["ignore", "pipe", "pipe"] });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (d) => { stdout += d; });
+    child.stderr.on("data", (d) => { stderr += d; });
+    child.on("error", reject);
+    child.on("close", (status) => resolve({ status, stdout, stderr }));
+  });
+}
 
 function countingAttest() {
   const calls = [];
@@ -343,7 +356,7 @@ test("CLI refuses a remote --base without --allow-remote (exit 2, no fetch)", as
 test("CLI against a paywalled loopback host exits 0 and prints BOUND", async () => {
   const fake = countingAttest();
   await serve(paywalledHost(fake.attest), async (base) => {
-    const ran = spawnSync(process.execPath, [SCRIPT, `--base=${base}`, `--public-base=${PUBLIC_BASE}`], { encoding: "utf8", timeout: 20_000 });
+    const ran = await runCli([`--base=${base}`, `--public-base=${PUBLIC_BASE}`]);
     assert.equal(ran.status, 0, ran.stderr + ran.stdout);
     assert.match(ran.stdout, /^BOUND$/m);
     for (const name of CHECK_NAMES) assert.match(ran.stdout, new RegExp(`PASS  ${name}`));
@@ -358,10 +371,11 @@ test("CLI against an unbound loopback host exits 1 and prints UNBOUND", async ()
     PUBLIC_BASE_URL: PUBLIC_BASE,
   }, { attest: fake.attest });
   await serve(app, async (base) => {
-    const ran = spawnSync(process.execPath, [SCRIPT, `--base=${base}`, `--public-base=${PUBLIC_BASE}`], { encoding: "utf8", timeout: 20_000 });
+    const ran = await runCli([`--base=${base}`, `--public-base=${PUBLIC_BASE}`]);
     assert.equal(ran.status, 1, ran.stderr + ran.stdout);
     assert.match(ran.stdout, /^UNBOUND/m);
-    assert.match(ran.stdout, /unpaid_well_formed_is_402/);
+    assert.match(ran.stdout, /FAIL  unpaid_well_formed_is_402/);
+    assert.doesNotMatch(ran.stdout, /This operation was aborted/);
   });
 });
 
