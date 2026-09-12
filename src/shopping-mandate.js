@@ -2,14 +2,20 @@
  * Shopping mandate + Done-gate for the x402 digital-product pilot.
  *
  * Schema and docs: docs/consumer/schemas/shopping-mandate-v1.json,
- * docs/consumer/schemas/shopify-store-url-env-v1.json,
- * docs/consumer/shopping-mandate.md. Pure functions. No HTTP, no storefront
- * host, no wallet. SHOPIFY_STORE_URL is env-gated and a no-op when unset.
- * Caller-supplied keys in the document are never a trust anchor.
+ * docs/consumer/shopping-mandate.md. Store URL env is owned by
+ * shopify-mandate-stub.js (SHOPIFY_STORE_URL; no-op until set). Pure
+ * functions. No HTTP, no storefront host, no wallet. Caller-supplied keys
+ * in the document are never a trust anchor.
  */
 import { createPublicKey, sign as edSign, verify as edVerify } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { canonical } from "./receipt.js";
+import {
+  STORE_URL_ENV,
+  STORE_URL_JSON_SCHEMA,
+  resolveStoreUrl,
+  evaluateShopifyMandateStub,
+} from "./shopify-mandate-stub.js";
 
 export const SCHEMA = "witness.shopping_mandate.v1";
 export const AUDIENCE = "witness.shopping.digital_product";
@@ -17,14 +23,15 @@ export const RAIL = "x402";
 export const CURRENCY = "USDC";
 export const RECURRING = "never";
 export const SIGNING_DOMAIN = "witness.shopping_mandate.v1";
-export const STORE_URL_ENV = "SHOPIFY_STORE_URL";
+export {
+  STORE_URL_ENV,
+  STORE_URL_JSON_SCHEMA,
+  resolveStoreUrl,
+  evaluateShopifyMandateStub,
+};
 
 export const MANDATE_JSON_SCHEMA = JSON.parse(
   readFileSync(new URL("../docs/consumer/schemas/shopping-mandate-v1.json", import.meta.url), "utf8"),
-);
-
-export const STORE_URL_JSON_SCHEMA = JSON.parse(
-  readFileSync(new URL("../docs/consumer/schemas/shopify-store-url-env-v1.json", import.meta.url), "utf8"),
 );
 
 export const DONE_PREDICATES = Object.freeze([
@@ -67,23 +74,6 @@ function isHttpsUrl(s, max = 2048) {
   } catch {
     return false;
   }
-}
-
-const storeUnset = () => ({ ok: true, enabled: false, store_url: null, reason: "store_url_unset" });
-const storeInvalid = () => ({ ok: false, enabled: false, store_url: null, reason: "store_url_invalid" });
-
-/**
- * Env-gated store URL. Unset/blank is a no-op. A set value is checked as
- * https and never fetched. Not a mandate field and not a Done predicate.
- */
-export function resolveStoreUrl(env = process.env) {
-  const raw = env == null ? undefined : env[STORE_URL_ENV];
-  if (raw == null) return storeUnset();
-  if (typeof raw !== "string") return storeInvalid();
-  const trimmed = raw.trim();
-  if (!trimmed) return storeUnset();
-  if (!isHttpsUrl(trimmed)) return storeInvalid();
-  return { ok: true, enabled: true, store_url: trimmed, reason: "store_url_configured" };
 }
 
 function boundedString(s, max) {
@@ -274,7 +264,7 @@ function receiptCheckOk(check) {
 export function evaluateDone(bundle, opts = {}) {
   const failed = [];
   const now = opts.now ?? Date.now();
-  const store = resolveStoreUrl(opts.env ?? process.env);
+  const stub = evaluateShopifyMandateStub({ env: opts.env ?? process.env });
   const mandate = bundle && typeof bundle === "object" ? bundle.mandate : null;
   const quoteWrap = bundle && typeof bundle === "object" ? bundle.quote : null;
   const quote = unwrapQuote(quoteWrap);
@@ -317,6 +307,6 @@ export function evaluateDone(bundle, opts = {}) {
     checkout_approved: complete,
     failed: unique,
     check: { approve: complete, reason: complete ? "mandate_done" : unique[0] },
-    store: { env: STORE_URL_ENV, enabled: store.enabled, reason: store.reason },
+    store: stub.store,
   };
 }
