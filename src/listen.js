@@ -82,6 +82,47 @@ Assertion grammar: only \`key < number\`.
 Key: GET /pubkey · Payment descriptor: GET /.well-known/x402
 `;
 
+const DEFAULT_READER_PRICE_USDC = 0.005;
+const DEFAULT_READER_MAX_USDC_PER_CALL = 0.005;
+const DEFAULT_READER_MAX_USDC_TOTAL = 0.02;
+
+function roundUsd(value) {
+  return Math.round((value + Number.EPSILON) * 1000) / 1000;
+}
+
+function parseUsd(raw, fallback) {
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
+function toMoney(usd) {
+  const fixed = roundUsd(usd).toFixed(3).replace(/0+$/, "").replace(/\.$/, "");
+  return `$${fixed}`;
+}
+
+function readerPriceUsd(input) {
+  try {
+    const url = new URL(String(input));
+    if (url.pathname === "/scrape") return DEFAULT_READER_PRICE_USDC;
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+function budgetedReaderPayFetch(payFetch, { maxPerCallUsd, maxTotalUsd }) {
+  let spentUsd = 0;
+  return async (input, init) => {
+    const priceUsd = readerPriceUsd(input);
+    if (!(priceUsd > 0)) throw new Error("reader_budget_unknown");
+    if (priceUsd - maxPerCallUsd > 1e-9) throw new Error("reader_budget_exceeded");
+    if (spentUsd + priceUsd - maxTotalUsd > 1e-9) throw new Error("reader_budget_exceeded");
+    const res = await payFetch(input, init);
+    if (res?.ok) spentUsd = roundUsd(spentUsd + priceUsd);
+    return res;
+  };
+}
+
 /**
  * Paying fetch for reader.outbid.sh/scrape (Base x402, $0.005): only when
  * X402_READER_PAYMENTS_ENABLED=1 AND a valid wallet key is set. Anything
@@ -94,8 +135,17 @@ export function readerPayment(env, readerFetch) {
     console.error("witness: X402_READER_PAYMENTS_ENABLED=1 but X402_READER_WALLET_KEY missing/invalid — reader stays unpaid");
     return {};
   }
-  const client = new x402Client().register("eip155:8453", new ExactEvmScheme(privateKeyToAccount(key)));
-  return { paymentsEnabled: true, payFetch: wrapFetchWithPayment(readerFetch ?? globalThis.fetch, client) };
+  const maxPerCallUsd = parseUsd(env.X402_READER_MAX_USDC_PER_CALL, DEFAULT_READER_MAX_USDC_PER_CALL);
+  const maxTotalUsd = parseUsd(env.X402_READER_MAX_USDC_TOTAL, DEFAULT_READER_MAX_USDC_TOTAL);
+  const client = x402Client.fromConfig({
+    schemes: [{ network: "eip155:8453", client: new ExactEvmScheme(privateKeyToAccount(key)) }],
+    spendControls: { maxAmountPerPayment: toMoney(maxPerCallUsd) },
+  });
+  return {
+    paymentsEnabled: true,
+    payFetch: budgetedReaderPayFetch(wrapFetchWithPayment(readerFetch ?? globalThis.fetch, client), { maxPerCallUsd, maxTotalUsd }),
+    readerBudget: { maxPerCallUsd, maxTotalUsd },
+  };
 }
 
 export function createHostApp(env = process.env, { readerFetch } = {}) {

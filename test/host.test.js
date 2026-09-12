@@ -63,8 +63,25 @@ test("reader payment wiring: payFetch only when enabled AND valid wallet key", a
   const pay = readerPayment({ X402_READER_PAYMENTS_ENABLED: "1", X402_READER_WALLET_KEY: "0x" + "11".repeat(32) }, underlying);
   assert.equal(pay.paymentsEnabled, true);
   assert.equal(typeof pay.payFetch, "function");
+  assert.deepEqual(pay.readerBudget, { maxPerCallUsd: 0.005, maxTotalUsd: 0.02 });
   const res = await pay.payFetch("https://reader.outbid.sh/scrape?url=https%3A%2F%2Fexample.com%2Ftop");
   assert.equal(res.ok, true, "a 200 passes through the paying wrapper untouched, no payment made");
+});
+
+test("reader payment breaker enforces cumulative spend ceiling before a retry can sign", async () => {
+  const underlying = async () => new Response("ok");
+  const pay = readerPayment({
+    X402_READER_PAYMENTS_ENABLED: "1",
+    X402_READER_WALLET_KEY: "0x" + "11".repeat(32),
+    X402_READER_MAX_USDC_PER_CALL: "0.005",
+    X402_READER_MAX_USDC_TOTAL: "0.01",
+  }, underlying);
+  await pay.payFetch("https://reader.outbid.sh/scrape?url=https%3A%2F%2Fexample.com%2Fa");
+  await pay.payFetch("https://reader.outbid.sh/scrape?url=https%3A%2F%2Fexample.com%2Fb");
+  await assert.rejects(
+    () => pay.payFetch("https://reader.outbid.sh/scrape?url=https%3A%2F%2Fexample.com%2Fc"),
+    /reader_budget_exceeded/,
+  );
 });
 
 test("x402 descriptor empty without payTo env; quote 200 + unpaid witness 402 via mocked reader", async () => {
