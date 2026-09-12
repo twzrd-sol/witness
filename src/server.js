@@ -9,6 +9,7 @@ import { renderStarMap } from "./star-map.js";
 import { funnelOutcome, funnelReason, funnelSpecHash, funnelVerdict, recordFunnel } from "./funnel.js";
 import { createOffersRouter } from "./routes/offers.js";
 import { createDeliveryRouter } from "./routes/delivery.js";
+import { createPayoutClaimRouter } from "./routes/payout-claim.js";
 import { paymentMiddleware } from "@x402/express";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { x402ResourceServer, HTTPFacilitatorClient } from "@x402/core/server";
@@ -51,12 +52,16 @@ function paymentMiddlewareWithBody(routes, rs) {
   };
 }
 
-/** Paywall route options per rail (v2 style: middleware builds requirements). */
-export function witnessAccepts({ evmAddress, svmAddress } = {}) {
+/** Paywall route options per rail at one price (v2 style: middleware builds requirements). */
+export function railAccepts(price, { evmAddress, svmAddress } = {}) {
   const a = [];
-  if (evmAddress) a.push({ scheme: "exact", network: EVM_NET, price: "$0.01", payTo: evmAddress, maxTimeoutSeconds: 300 });
-  if (svmAddress) a.push({ scheme: "exact", network: SVM_NET, price: "$0.01", payTo: svmAddress, maxTimeoutSeconds: 300 });
+  if (evmAddress) a.push({ scheme: "exact", network: EVM_NET, price, payTo: evmAddress, maxTimeoutSeconds: 300 });
+  if (svmAddress) a.push({ scheme: "exact", network: SVM_NET, price, payTo: svmAddress, maxTimeoutSeconds: 300 });
   return a;
+}
+
+export function witnessAccepts(paywall = {}) {
+  return railAccepts("$0.01", paywall);
 }
 
 /**
@@ -433,6 +438,8 @@ export function createApp(deps = {}) {
   } else {
     app.post("/witness", witness);
   }
+  // Payout-claim verification rides the same paywall and key at its own price.
+  app.use(createPayoutClaimRouter(wired, { accepts: railAccepts("$0.05", deps.paywall), paymentMiddlewareWithBody, resourceServer: rs, publicBaseUrl: deps.publicBaseUrl, funnelDir, quoteRateLimit: deps.payoutQuoteRateLimit }));
   app.use((err, _req, res, next) => {
     if (err && (err.type === "entity.parse.failed" || (err instanceof SyntaxError && err.status === 400 && "body" in err))) {
       return res.status(400).json({ reason: "bad_json" });

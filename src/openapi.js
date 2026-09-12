@@ -1,7 +1,8 @@
 import { SPEC_ORIGINS } from "./delivery.js";
 import { EXTRACT_SCHEMA } from "./extract.js";
-import { ASSERTION_SCHEMA, witnessAccepts } from "./server.js";
+import { ASSERTION_SCHEMA, railAccepts, witnessAccepts } from "./server.js";
 import { DELIVERY_VERDICTS, EXAMPLE_BODY as DELIVERY_EXAMPLE, MAX_BODY as DELIVERY_MAX_BODY, MODES, SPEC_TYPES } from "./routes/delivery.js";
+import { PAYOUT_QUOTE_ROUTE, PAYOUT_ROUTE } from "./routes/payout-claim.js";
 
 const body = (schema, example) => ({ required: true, content: { "application/json": { schema, ...(example ? { example } : {}) } } });
 const out = (description, schema = {}) => ({ description, content: { "application/json": { schema } } });
@@ -186,8 +187,51 @@ const paymentRequired = (resourceUrl) => ({
   } } },
 });
 
+const payoutRequest = {
+  type: "object",
+  required: ["claim_url", "claim", "wallet", "network", "direction"],
+  properties: {
+    claim_url: { type: "string", format: "uri", description: "Public https page or JSON document that publishes the figure being claimed.", example: "https://deskcrew.io/api/arena/contests" },
+    claim: {
+      type: "object", minProperties: 1, additionalProperties: false,
+      description: "Claim field -> the page's own key for that figure. Every figure is read as a number. Inbound: payout_count is settlements received, unique_wallets is distinct counterparties, paid_usd is USDC received. Outbound: the same three read the wallet as an x402 payer.",
+      properties: { payout_count: { type: "string" }, unique_wallets: { type: "string" }, paid_usd: { type: "string" } },
+      example: { payout_count: "decidedCount", unique_wallets: "uniqueWallets", paid_usd: "sentUsd" },
+    },
+    wallet: { type: "string", description: "The wallet the claim is about: Solana base58 or Base 0x address, matching `network`.", example: "0xB075aA8206D6De88EDEeD0eE4015a1a33D3659D8" },
+    network: { type: "string", enum: ["solana", "base"], example: "base" },
+    direction: { type: "string", enum: ["inbound", "outbound"], description: "inbound: the wallet receives x402 settlements (a seller). outbound: the wallet pays them. The corpus indexes x402 settlements only, so an outbound figure above what was observed is coverage_limited, never discrepant: plain USDC transfers are invisible to it.", example: "inbound" },
+  },
+};
+const PAYOUT_EXAMPLE = { claim_url: "https://deskcrew.io/api/arena/contests", claim: { payout_count: "decidedCount", unique_wallets: "uniqueWallets", paid_usd: "sentUsd" }, wallet: "0xB075aA8206D6De88EDEeD0eE4015a1a33D3659D8", network: "base", direction: "inbound" };
+const finding = { type: "object", required: ["field", "claimed", "observed", "relation", "note"], properties: { field: { enum: ["payout_count", "unique_wallets", "paid_usd"] }, claimed: { type: "number" }, observed: { type: ["number", "null"] }, relation: { enum: ["supported", "discrepant", "coverage_limited"] }, note: { type: ["string", "null"] } } };
+const payoutQuoteOut = { type: "object", required: ["price_usdc", "can_deliver", "verdict", "findings", "coverage"], properties: { price_usdc: { const: "0.05" }, can_deliver: { const: true }, verdict: { enum: ["supported", "discrepant", "coverage_limited", "incomplete"] }, verdict_reason: { type: ["string", "null"] }, findings: { type: "array", items: finding }, missing: { type: "array", items: { type: "string" } }, coverage: { type: "object" } } };
+const payoutReceiptSchema = {
+  type: "object",
+  required: ["schema", "claim", "wallet", "network", "direction", "evidence", "findings", "coverage", "verdict", "verdict_reason", "observed_at", "valid_until", "method", "spec_hash", "vantage", "receipt"],
+  properties: {
+    schema: { const: "witness.payout_claim.v1" },
+    claim: { type: "object", description: "url, source_hash of the retrieved claim page, keys (the claim -> page key map), values read, missing fields, and a 160-char evidence snippet." },
+    wallet: { type: "string" },
+    network: { enum: ["solana", "base"] },
+    direction: { enum: ["inbound", "outbound"] },
+    evidence: { type: "object", description: "intel_sources (URL, sha256 of the raw response, fetched_at) and the observed figures reduced from them." },
+    findings: { type: "array", items: finding },
+    coverage: { type: "object", description: "corpus, chain, window (all_time on Solana, 90d on Base) and the scope note: an observed subset of x402 settlements, not a universe claim." },
+    verdict: { enum: ["supported", "discrepant", "coverage_limited", "incomplete"], description: "coverage_limited is an answer about the corpus, never a contradiction. Billable verdicts only; extract_none and every own defect are 422 and free." },
+    verdict_reason: { type: ["string", "null"] },
+    observed_at: { type: "string", format: "date-time" },
+    valid_until: { type: "string", format: "date-time", description: "observed_at + 1h; receipts perish." },
+    method: { type: "object", description: "Full canonical method {claim_url, retrieval, claim, wallet, network, direction, intel} — signed inside the receipt." },
+    spec_hash: { type: "string" },
+    vantage: { type: "string" },
+    receipt: { type: "string", description: "ed25519 signature over deep canonical JSON; verify with GET /pubkey." },
+  },
+};
+
 export function openapiDoc(env = process.env) {
   const base = env.PUBLIC_BASE_URL || "https://witness.outbid.sh";
+  const payoutAccepts = railAccepts("$0.05", { evmAddress: env.EVM_ADDRESS, svmAddress: env.SVM_ADDRESS });
   return {
     openapi: "3.1.0",
     info: {
@@ -323,6 +367,48 @@ export function openapiDoc(env = process.env) {
             "500": out('Our defect, never a verdict and never billed: "attest_failed" (the model threw), "attest_invalid" (the model returned a receipt without a verdict or its limits, which this route refuses to sign rather than patch), "internal_error".', deliveryFailure(["attest_failed", "attest_invalid", "internal_error"])),
             "502": out("The payment layer could not be reached or answered badly (facilitator) — reason paywall_unavailable, details.problems carries its message. Nothing graded, signed, or billed.", deliveryFailure(["paywall_unavailable"])),
             "503": out("No evidence model in this process — reason attest_not_wired.", deliveryFailure(["attest_not_wired"])),
+          },
+        },
+      },
+      [PAYOUT_QUOTE_ROUTE]: {
+        post: {
+          summary: "Free deliverability probe for a payout-claim verification",
+          tags: ["observation", "receipt", "x402"],
+          description: "Does a public payout or revenue figure match what TWZRD's settlement corpus observed for the named wallet? 200 announces the verdict (supported, discrepant, coverage_limited, incomplete) and the price; 400 is a malformed request; 422 means not deliverable (ssrf refusal, reader failure, intel unavailable, or no mapped key on the page). Never bills.",
+          security: [],
+          requestBody: body(payoutRequest, PAYOUT_EXAMPLE),
+          responses: {
+            "200": out("Deliverable now — verdict announced", payoutQuoteOut),
+            "400": out("Malformed request: bad_claim_url, bad_claim, bad_wallet, bad_network, bad_direction"),
+            "422": out("Not deliverable now — nothing billed"),
+            "429": out("Quote rate limited per IP — retry after a minute"),
+          },
+        },
+      },
+      [PAYOUT_ROUTE]: {
+        get: {
+          summary: "Crawlable discovery — 402 payment challenge",
+          tags: ["observation", "receipt", "x402"],
+          description: "Discovery endpoint: always answers 402 with a payment-required challenge header. No quote, no retrieve, never bills. The paid deliverable is POST /verify/payout.",
+          security: [],
+          responses: {
+            "402": out("x402 payment required — challenge is base64-JSON in the PAYMENT-REQUIRED header", { type: "object" }),
+            "405": out("GET with payment headers is refused — verify via POST /verify/payout"),
+          },
+        },
+        post: {
+          summary: "Paid payout-claim verification — signed receipt",
+          tags: ["observation", "receipt", "x402"],
+          description: "Quote-first: an unpaid deliverable request gets an x402 402 challenge; after payment settles the claim page is read once, held against the intel corpus, and a receipt is signed. The receipt names its evidence (claim page hash, intel response hashes) and its coverage. A 422 never bills.",
+          "x-payment": { protocol: "x402", x402Version: 2, price_usdc: "0.05", accepts: payoutAccepts },
+          "x-payment-info": { protocols: [{ x402: {} }], price: { mode: "fixed", currency: "USD", amount: "0.050000" }, descriptor: "GET /.well-known/x402" },
+          security: [{ x402: [] }],
+          requestBody: body(payoutRequest, PAYOUT_EXAMPLE),
+          responses: {
+            "200": out("Signed receipt", payoutReceiptSchema),
+            "402": paymentRequired(`${base}${PAYOUT_ROUTE}`),
+            "400": out("Malformed request"),
+            "422": out("Not deliverable — nothing billed"),
           },
         },
       },
