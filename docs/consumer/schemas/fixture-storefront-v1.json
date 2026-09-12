@@ -5,13 +5,13 @@
   "description": "Local-only catalog for the x402 digital-product buyer checklist. Not a Shopify store, Catalog, or UCP profile. Quotes are built from these bytes; nothing is probed or paid. additionalProperties is false — store_url, cart_url, checkout_url, variant_id, and cart_base are rejected.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["kind", "live_shopify", "origin", "products"],
+  "required": ["kind", "live_store", "origin", "products"],
   "properties": {
     "kind": {
       "const": "witness.fixture_storefront.v1",
-      "description": "Fixture catalog domain. A live offer list or Shopify product JSON is not this document."
+      "description": "Fixture catalog domain. A live offer list or remote store product JSON is not this document."
     },
-    "live_shopify": {
+    "live_store": {
       "const": false,
       "description": "Must be false. A true value means the catalog is not a fixture."
     },

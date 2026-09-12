@@ -18,7 +18,7 @@ import { KIND, ORIGIN, inspectCatalog, getProduct } from "./fixture-storefront.j
 export const CHECKLIST_STEPS = Object.freeze([
   "storefront_is_fixture",
   "catalog_digital_only",
-  "no_shopify_fields",
+  "no_store_fields",
   "mandate_schema",
   "mandate_signature",
   "mandate_fresh",
@@ -34,11 +34,11 @@ const own = (o, k) => o != null && Object.hasOwn(o, k);
 
 function isFixtureStorefront(storefront, catalog) {
   const kind = storefront?.kind ?? catalog?.kind;
-  const live = storefront?.live_shopify ?? catalog?.live_shopify;
+  const live = storefront?.live_store ?? catalog?.live_store;
   const origin = storefront?.origin ?? catalog?.origin;
   if (kind !== KIND || live !== false || origin !== ORIGIN) return false;
   if (storefront) {
-    if (storefront.kind !== KIND || storefront.live_shopify !== false || storefront.origin !== ORIGIN) {
+    if (storefront.kind !== KIND || storefront.live_store !== false || storefront.origin !== ORIGIN) {
       return false;
     }
   }
@@ -55,7 +55,7 @@ function isFixtureQuote(wrap, quote) {
   if (!wrap || wrap.status !== 200 || !quote || typeof quote !== "object") return false;
   if (quote.source !== "fixture_catalog") return false;
   if (quote.probed !== false) return false;
-  if (quote.live_shopify !== false) return false;
+  if (quote.live_store !== false) return false;
   if (quote.rail !== "x402" || quote.checkout !== "x402") return false;
   if (quote.gate?.status !== "passed" || quote.gate?.reason !== "fixture_catalog") return false;
   if (typeof quote.checkout_url === "string" && quote.checkout_url.length) return false;
@@ -89,7 +89,7 @@ export function evaluateBuyerChecklist(bundle, opts = {}) {
 
   if (!isFixtureStorefront(storefront, catalog)) failed.push("storefront_is_fixture");
   if (!catalogDigitalOnly(catalog)) failed.push("catalog_digital_only");
-  if (!inspectCatalog(catalog).ok) failed.push("no_shopify_fields");
+  if (!inspectCatalog(catalog).ok) failed.push("no_store_fields");
   if (!validateMandate(mandate).ok) failed.push("mandate_schema");
   if (!verifyMandate(mandate, opts.issuerPublicKey).ok) failed.push("mandate_signature");
 

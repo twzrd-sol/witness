@@ -1,6 +1,6 @@
 {
   "kind": "witness.fixture_storefront.v1",
-  "live_shopify": false,
+  "live_store": false,
   "origin": "local",
   "note": "Offline digital-product catalog for the buyer checklist. Quotes are built from these bytes. This file is not a live store, Catalog profile, or UCP session.",
   "products": [

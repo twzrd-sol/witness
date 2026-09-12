@@ -22,7 +22,7 @@ try {
 
 server.on("listening", () => {
   const addr = server.address();
-  console.log(`${KIND} http://${addr.address}:${addr.port} (local only; live_shopify=false; no payment)`);
+  console.log(`${KIND} http://${addr.address}:${addr.port} (local only; live_store=false; no payment)`);
 });
 server.on("error", (err) => {
   console.error(err.message);

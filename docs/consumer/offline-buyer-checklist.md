@@ -17,7 +17,7 @@ Schema: [`schemas/fixture-storefront-v1.json`](schemas/fixture-storefront-v1.jso
 | Surface | Behaviour |
 | --- | --- |
 | `kind` | `witness.fixture_storefront.v1` |
-| `live_shopify` | `false` (const) |
+| `live_store` | `false` (const) |
 | `origin` | `local` |
 | `listProducts` / `getProduct` | In-process catalog read |
 | `quoteProduct` | 200 quote from catalog bytes; `source: fixture_catalog`, `probed: false` |
@@ -52,9 +52,9 @@ Twelve steps; failed-closed is the default. Actor narration, HTTP 200, and
 
 | Step | Evidence that satisfies it |
 | --- | --- |
-| `storefront_is_fixture` | Catalog (and optional `storefront` object) name `kind`, `live_shopify: false`, `origin: local` |
+| `storefront_is_fixture` | Catalog (and optional `storefront` object) name `kind`, `live_store: false`, `origin: local` |
 | `catalog_digital_only` | Every product is `rail: x402` and `checkout: x402` |
-| `no_shopify_fields` | `inspectCatalog` accepts the catalog |
+| `no_store_fields` | `inspectCatalog` accepts the catalog |
 | `mandate_schema` | `validateMandate` on `shopping-mandate-v1` |
 | `mandate_signature` | `verifyMandate` against the independently pinned issuer key |
 | `mandate_fresh` | `now < expires_at` |

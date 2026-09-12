@@ -87,7 +87,7 @@ function happyBundle(t, mandateOverrides = {}, bundleOverrides = {}) {
     key,
     catalog,
     bundle: {
-      storefront: { kind: KIND, live_shopify: false, origin: ORIGIN },
+      storefront: { kind: KIND, live_store: false, origin: ORIGIN },
       catalog,
       mandate,
       quote: quoteProduct(READER_OFFER_ID, { catalog }),
@@ -142,7 +142,7 @@ test("JSON schema file is the runtime schema and Ajv accepts the committed catal
   assert.equal(ORIGIN, "local");
   assert.ok(ajvOk(CATALOG_FILE), ajv.errorsText(ajvOk.errors));
   assert.equal(inspectCatalog(CATALOG_FILE).ok, true);
-  assert.equal(CATALOG_FILE.live_shopify, false);
+  assert.equal(CATALOG_FILE.live_store, false);
   assert.equal(CATALOG_FILE.origin, "local");
 });
 
@@ -197,7 +197,7 @@ test("quoteProduct builds a fixture quote that binds the signed mandate example"
   assert.equal(quote.status, 200);
   assert.equal(quote.body.source, "fixture_catalog");
   assert.equal(quote.body.probed, false);
-  assert.equal(quote.body.live_shopify, false);
+  assert.equal(quote.body.live_store, false);
   assert.equal(quote.body.gate.reason, "fixture_catalog");
   assert.equal(quote.body.rail, "x402");
   assert.equal(quote.body.checkout, "x402");
@@ -304,7 +304,7 @@ test("a merchant-checkout quote cannot pass the checklist", (t) => {
         price: { amount_atomic: "600", asset: "USD" },
         source: "live_store",
         probed: true,
-        live_shopify: true,
+        live_store: true,
       },
     },
   });
@@ -334,7 +334,7 @@ test("payment_attempted or a wallet fails no_spend", (t) => {
 
 test("a storefront that claims to be live fails storefront_is_fixture", (t) => {
   const { bundle, opts } = happyBundle(t, {}, {
-    storefront: { kind: KIND, live_shopify: true, origin: "public" },
+    storefront: { kind: KIND, live_store: true, origin: "public" },
   });
   assert.ok(evaluateBuyerChecklist(bundle, opts).failed.includes("storefront_is_fixture"));
 });
@@ -343,7 +343,7 @@ test("empty bundle is not ready on every required step class", () => {
   const report = evaluateBuyerChecklist(null, {});
   assert.equal(report.ready, false);
   assert.equal(report.checkout_approved, false);
-  for (const p of ["storefront_is_fixture", "catalog_digital_only", "no_shopify_fields", "mandate_schema", "mandate_signature", "quote_from_fixture", "no_spend"]) {
+  for (const p of ["storefront_is_fixture", "catalog_digital_only", "no_store_fields", "mandate_schema", "mandate_signature", "quote_from_fixture", "no_spend"]) {
     assert.ok(report.failed.includes(p), p);
   }
 });
@@ -352,7 +352,7 @@ test("renderFixtureHtml labels the page as a local fixture with no payment", () 
   const html = renderFixtureHtml();
   assert.match(html, /FIXTURE/);
   assert.match(html, /no payment/);
-  assert.match(html, /live_shopify=false/);
+  assert.match(html, /live_store=false/);
   assert.match(html, /outbid-reader-scrape/);
   assert.doesNotMatch(html, /Buy now/i);
 });
@@ -361,7 +361,7 @@ test("listenFixture serves health, catalog, and fixture quotes on loopback", asy
   await withFixture(async (base) => {
     const health = await (await fetch(`${base}/health`)).json();
     assert.equal(health.kind, KIND);
-    assert.equal(health.live_shopify, false);
+    assert.equal(health.live_store, false);
 
     const html = await (await fetch(`${base}/`)).text();
     assert.match(html, /FIXTURE/);
@@ -404,7 +404,7 @@ test("fixture HTTP rejects a non-local Host header", async () => {
     assert.equal(remote.body.reason, "fixture_host_not_local");
     const ok = await requestWithHost(base, "/health", "127.0.0.1");
     assert.equal(ok.status, 200);
-    assert.equal(ok.body.live_shopify, false);
+    assert.equal(ok.body.live_store, false);
   });
 });
 

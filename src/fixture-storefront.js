@@ -39,7 +39,7 @@ function hasForbiddenHostText(value) {
 export function inspectCatalog(catalog) {
   if (!catalog || typeof catalog !== "object" || Array.isArray(catalog)) return fail("bad_catalog");
   if (catalog.kind !== KIND) return fail("kind_mismatch");
-  if (catalog.live_shopify !== false) return fail("live_flag");
+  if (catalog.live_store !== false) return fail("live_flag");
   if (catalog.origin !== ORIGIN) return fail("origin_not_local");
   if (!Array.isArray(catalog.products) || catalog.products.length < 1) return fail("empty_catalog");
   if (hasForbiddenHostText(catalog)) return fail("forbidden_host");
@@ -134,7 +134,7 @@ export function quoteProduct(offerId, opts = {}) {
       gate: { status: "passed", reason: "fixture_catalog" },
       source: "fixture_catalog",
       probed: false,
-      live_shopify: false,
+      live_store: false,
     },
   };
 }
@@ -151,7 +151,7 @@ export function renderFixtureHtml(catalog = loadCatalog()) {
 <html lang="en">
 <head><meta charset="utf-8"><title>Fixture storefront (local only)</title></head>
 <body>
-<p><strong>FIXTURE</strong> — local only — not a live store — no payment — live_shopify=false</p>
+<p><strong>FIXTURE</strong> — local only — not a live store — no payment — live_store=false</p>
 <h1>Digital-product fixture catalog</h1>
 <p>Quotes are built from in-repo catalog bytes. This process does not call a remote storefront, Catalog, or UCP.</p>
 <ul>
@@ -229,7 +229,7 @@ export function handleFixtureRequest(req, res, catalog) {
   const path = url.pathname;
 
   if (req.method === "GET" && path === "/health") {
-    send(res, 200, { kind: KIND, live_shopify: false, origin: ORIGIN });
+    send(res, 200, { kind: KIND, live_store: false, origin: ORIGIN });
     return;
   }
   if (req.method === "GET" && path === "/") {
@@ -238,7 +238,7 @@ export function handleFixtureRequest(req, res, catalog) {
     return;
   }
   if (req.method === "GET" && path === "/api/products") {
-    send(res, 200, { kind: KIND, live_shopify: false, origin: ORIGIN, products: listProducts(catalog) });
+    send(res, 200, { kind: KIND, live_store: false, origin: ORIGIN, products: listProducts(catalog) });
     return;
   }
   const productMatch = /^\/api\/products\/([^/]+)$/.exec(path);
