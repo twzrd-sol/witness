@@ -2,11 +2,13 @@ import { createHash } from "node:crypto";
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { verifyReceipt } from "./receipt.js";
+import { normalizeRetrieval } from "./retrieve.js";
 
 export const VALID_FOR_MS = 3_600_000;
 
-export function methodFromRequest(body, retrieval = "scrape") {
-  return { url: body.url, retrieval, extract: body.extract, assertion: body.assertion ?? null };
+export function methodFromRequest(body, retrieval) {
+  const mode = retrieval ?? normalizeRetrieval(body?.retrieval) ?? "scrape";
+  return { url: body.url, retrieval: mode, extract: body.extract, assertion: body.assertion ?? null };
 }
 
 export const SCHEMAS = {

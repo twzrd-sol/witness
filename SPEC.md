@@ -20,12 +20,14 @@ by absolute path.
 
 ## Quote then pay
 
-1. `POST /quote` unpaid. Probe scrape (not browse). If extract cannot fill
-   required keys → **422** `{reason}` **no 402**.
-2. If probe works → **200** `{price_usdc: "0.01", replicas: 1, can_deliver: true}`.
-3. `POST /witness` same body → **402** Exact USDC (Solana or Base, match reader).
-   After settle: scrape again (or browse only if quote said `needs_browser` and
-   client sent `browser: true`). Extract. Optional assertion. Sign receipt.
+1. `POST /quote` unpaid. Probe the requested retrieval (`scrape` default).
+   A scrape JS wall is **422** `{reason: "needs_browser"}` **no 402** — the
+   caller opts into `retrieval: "browse"` on a new request. Never auto-upgrade.
+2. If the probe works → **200** `{price_usdc, retrieval, replicas: 1, can_deliver: true}`
+   (`0.01` scrape / `0.06` browse).
+3. `POST /witness` same body → **402** Exact USDC at the quoted price.
+   After settle: reuse the quote retrieve (do not scrape twice). Extract.
+   Optional assertion. Sign receipt. Method binds `retrieval`.
 
 Do not 402 a request the quote would 422. Do not auto-upgrade scrape 422 to browse.
 
@@ -40,7 +42,7 @@ snippets, not the full page.
 
 ## Prices (operator)
 
-Static witness $0.01 (covers reader $0.005 + coord). Browser $0.05 later.
+Static witness scrape $0.01 (covers reader $0.005 + coord). Explicit browse $0.06 (reader $0.05 + coord).
 replicas 3 later. No token split this weekend.
 
 ## Tests (no live reader, no live 402)

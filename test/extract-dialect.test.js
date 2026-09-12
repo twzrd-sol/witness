@@ -37,7 +37,7 @@ test("canonical dialect: spec_hash byte-identical to the pre-normalisation pin",
 
 test("JSON Schema dialect: quote 200, signed method is canonical, same spec_hash", async () => {
   const q = await handleQuote({ url: URL, extract: SCHEMA }, { retrieve });
-  assert.deepEqual(q.json, { price_usdc: "0.01", replicas: 1, can_deliver: true });
+  assert.deepEqual(q.json, { price_usdc: "0.01", replicas: 1, can_deliver: true, retrieval: "scrape" });
   const out = await handleWitness({ url: URL, extract: SCHEMA }, { retrieve, paid: true, key: generateProcessKey() });
   assert.equal(out.status, 200);
   assert.equal(out.json.spec_hash, PINNED, "one method, one identity — the observatory groups dialects together");

@@ -149,15 +149,19 @@ const STIMULI = [
   { id: "quote.400.bad_json", path: "/quote", method: "POST", status: 400, reason: "bad_json", host: "free", headers: { "content-type": "application/json" }, body: "{not json" },
   { id: "quote.400.bad_extract", path: "/quote", method: "POST", status: 400, reason: "bad_extract", host: "free", body: { url: GATE_METHOD.url, extract: { price: "bogus" }, assertion: GATE_METHOD.assertion } },
   { id: "quote.400.bad_assertion", path: "/quote", method: "POST", status: 400, reason: "bad_assertion", host: "free", body: { ...GATE_METHOD, assertion: 7 } },
+  { id: "quote.400.bad_retrieval", path: "/quote", method: "POST", status: 400, reason: "bad_retrieval", host: "free", body: { ...GATE_METHOD, retrieval: "chromium" } },
   { id: "quote.422.https_only", path: "/quote", method: "POST", status: 422, reason: "https_only", host: "free", body: { ...GATE_METHOD, url: "http://127.0.0.1/" } },
+  { id: "quote.422.needs_browser", path: "/quote", method: "POST", status: 422, reason: "needs_browser", host: "free", body: GATE_METHOD, extra: { retrieve: async () => { throw new Error("needs_browser"); } } },
   { id: "quote.429.quote_rate_limited", path: "/quote", method: "POST", status: 429, reason: "quote_rate_limited", host: "quote1", body: GATE_METHOD, prime: 1 },
   { id: "quote.200.gate", path: "/quote", method: "POST", status: 200, host: "free", body: GATE_METHOD, shape: "quote200" },
 
   { id: "witness.post.400.bad_json", path: "/witness", method: "POST", status: 400, reason: "bad_json", host: "paywalled", headers: { "content-type": "application/json" }, body: "{not json" },
   { id: "witness.post.400.bad_extract", path: "/witness", method: "POST", status: 400, reason: "bad_extract", host: "paywalled", body: { url: GATE_METHOD.url, extract: { price: "bogus" } } },
   { id: "witness.post.400.bad_assertion", path: "/witness", method: "POST", status: 400, reason: "bad_assertion", host: "paywalled", body: { ...GATE_METHOD, assertion: 7 } },
+  { id: "witness.post.400.bad_retrieval", path: "/witness", method: "POST", status: 400, reason: "bad_retrieval", host: "paywalled", body: { ...GATE_METHOD, retrieval: "chromium" }, noChallenge: true },
   { id: "witness.post.402", path: "/witness", method: "POST", status: 402, host: "paywalled", body: GATE_METHOD, challenge: true },
   { id: "witness.post.422.https_only", path: "/witness", method: "POST", status: 422, reason: "https_only", host: "paywalled", body: { ...GATE_METHOD, url: "http://127.0.0.1/" }, noChallenge: true },
+  { id: "witness.post.422.needs_browser", path: "/witness", method: "POST", status: 422, reason: "needs_browser", host: "paywalled", body: GATE_METHOD, noChallenge: true, extra: { retrieve: async () => { throw new Error("needs_browser"); } } },
   { id: "witness.get.402", path: "/witness", method: "GET", status: 402, host: "paywalled", challenge: true },
   { id: "witness.get.405", path: "/witness", method: "GET", status: 405, reason: "get_discovery_only_use_post", host: "paywalled", headers: { "x-payment": "bogus" }, noChallenge: true },
 
@@ -229,7 +233,7 @@ test("map: GATE_METHOD is the design-partner card and satisfies the documented r
   assert.equal(witnessReqOk(GATE_METHOD), true, ajv.errorsText(witnessReqOk.errors));
   const req = requestSchemaAt(DOC, "/quote", "POST");
   assert.deepEqual(req.required, ["url", "extract"]);
-  assert.deepEqual(req.properties.retrieval.enum, ["scrape"]);
+  assert.deepEqual(req.properties.retrieval.enum, ["scrape", "browse"]);
   assert.deepEqual(requestSchemaAt(DOC, "/witness", "POST"), req, "quote and witness share one request schema");
 });
 
@@ -260,9 +264,9 @@ test("map: every stimulus targets a documented preapproval status", () => {
   assert.ok(CONTRACT_STATUSES.includes("402") && CONTRACT_STATUSES.includes("400"));
 });
 
-test("map: quote 400 / witness 400 reason enums stay the shared shape trio", () => {
-  assert.deepEqual(CELL_BY.get("POST /quote 400").reasons, ["bad_json", "bad_extract", "bad_assertion"]);
-  assert.deepEqual(CELL_BY.get("POST /witness 400").reasons, ["bad_json", "bad_extract", "bad_assertion"]);
+test("map: quote 400 / witness 400 reason enums stay the shared shape list", () => {
+  assert.deepEqual(CELL_BY.get("POST /quote 400").reasons, ["bad_json", "bad_extract", "bad_assertion", "bad_retrieval"]);
+  assert.deepEqual(CELL_BY.get("POST /witness 400").reasons, ["bad_json", "bad_extract", "bad_assertion", "bad_retrieval"]);
 });
 
 // ---------------------------------------------------------------------------
@@ -362,7 +366,7 @@ async function runtimeBody(s) {
     return { status: out.status, json: out.json, headers: new Headers(), key };
   }
   const key = generateProcessKey();
-  return serve(buildApp(s.host, { key }), async (base) => {
+  return serve(buildApp(s.host, { key, ...s.extra }), async (base) => {
     const res = await fire(base, s);
     const headers = res.headers;
     const json = s.textIncludes ? null : await res.json().catch(() => ({}));

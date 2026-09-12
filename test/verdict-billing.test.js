@@ -60,7 +60,7 @@ test("the billing line is a constant, and nothing outside it is ever charged", a
   assert.deepEqual([...BILLABLE_VERDICTS], ["supported", "contradicted", "incomplete"]);
   assert.ok(!BILLABLE_VERDICTS.includes("unable_to_verify"), "we cannot charge for not knowing");
   for (const r of ["unable_to_verify", "assertion_malformed", "assertion_field_not_extracted",
-                   "retrieve_failed", "retrieve_empty", "bad_json", "bad_extract", "bad_assertion"])
+                   "retrieve_failed", "retrieve_empty", "needs_browser", "bad_json", "bad_extract", "bad_assertion", "bad_retrieval"])
     assert.ok(NEVER_BILLED.includes(r), `${r} must be permanently free`);
 
   // And the paths that produce them return a free 422, never a challenge.

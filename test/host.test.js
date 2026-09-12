@@ -106,6 +106,14 @@ test("reader payment wiring: payFetch only when enabled AND valid wallet key", a
     /reader_host_refused/,
     "paying fetch is pinned to reader.outbid.sh",
   );
+  assert.equal(pay.maxAmountPerPaymentBrowse, "$0.05", "browse ceiling is bound before any sign");
+  const browsed = await pay.payFetch("https://reader.outbid.sh/browse?url=https%3A%2F%2Fexample.com%2Fapp");
+  assert.equal(browsed.ok, true, "a 200 on /browse passes through the browse-capped wrapper");
+  await assert.rejects(
+    () => pay.payFetch("https://reader.outbid.sh/other?url=https%3A%2F%2Fexample.com%2Ftop"),
+    /reader_path_refused/,
+    "paying fetch is pinned to /scrape and /browse",
+  );
 });
 
 test("x402 descriptor empty without payTo env; quote 200 + unpaid witness 402 via mocked reader", async () => {

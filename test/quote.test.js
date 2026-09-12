@@ -25,7 +25,7 @@ test("quote 422 when extract keys missing from fixture html", async () => {
 
 test("quote 200 when fixture html fills extract", async () => {
   const out = await handleQuote(BODY, { retrieve: async () => ({ text: FIXTURE }) });
-  assert.deepEqual(out.json, { price_usdc: "0.01", replicas: 1, can_deliver: true });
+  assert.deepEqual(out.json, { price_usdc: "0.01", replicas: 1, can_deliver: true, retrieval: "scrape" });
 });
 
 test("an assertion that does not hold is quoted as contradicted, not refused", async () => {
@@ -65,11 +65,40 @@ test("with no claim at all, a bare extract miss is still the free refusal", asyn
 test("scrape 422 does not call browse", async () => {
   let scrape = 0, browse = 0;
   const out = await handleQuote(BODY, {
-    retrieve: async () => { scrape++; throw new Error("needs_browser"); },
+    retrieve: async (_url, opts = {}) => {
+      if (opts.retrieval === "browse") { browse++; return { text: FIXTURE }; }
+      scrape++;
+      throw new Error("needs_browser");
+    },
   });
   assert.equal(out.status, 422);
+  assert.equal(out.json.reason, "needs_browser");
+  assert.equal(out.json.price_usdc, undefined, "needs_browser is never billed");
   assert.equal(scrape, 1);
   assert.equal(browse, 0);
+});
+
+test("unknown retrieval is 400 bad_retrieval, never a probe", async () => {
+  let n = 0;
+  const out = await handleQuote({ ...BODY, retrieval: "chromium" }, { retrieve: async () => (n++, { text: FIXTURE }) });
+  assert.equal(out.status, 400);
+  assert.equal(out.json.reason, "bad_retrieval");
+  assert.equal(n, 0);
+});
+
+test("explicit retrieval browse probes browse only and quotes 0.06", async () => {
+  const calls = [];
+  const out = await handleQuote({ ...BODY, retrieval: "browse" }, {
+    retrieve: async (url, opts = {}) => {
+      calls.push({ url, retrieval: opts.retrieval ?? "scrape" });
+      return { text: FIXTURE };
+    },
+  });
+  assert.equal(out.status, 200);
+  assert.equal(out.json.can_deliver, true);
+  assert.equal(out.json.retrieval, "browse");
+  assert.equal(out.json.price_usdc, "0.06");
+  assert.deepEqual(calls, [{ url: BODY.url, retrieval: "browse" }]);
 });
 
 test("POST /quote SSRF does not retrieve", async () => {

@@ -128,6 +128,24 @@ test("POST /witness unpaid 402 after a deliverable quote", async () => {
   assert.equal(out.json.accepts[0].amount ?? out.json.accepts[0].maxAmountRequired, "10000");
 });
 
+test("browse quote-first: unpaid 402 is $0.06; paid receipt binds retrieval browse", async () => {
+  const calls = [];
+  const retrieve = async (url, opts = {}) => {
+    calls.push(opts.retrieval ?? "scrape");
+    return { text: FIXTURE };
+  };
+  const browse = { ...BODY, retrieval: "browse" };
+  const unpaid = await handleWitness(browse, { retrieve });
+  assert.equal(unpaid.status, 402);
+  assert.equal(unpaid.json.accepts[0].amount ?? unpaid.json.accepts[0].maxAmountRequired, "60000");
+
+  const key = generateProcessKey();
+  const paid = await handleWitness(browse, { retrieve, paid: true, key });
+  assert.equal(paid.status, 200);
+  assert.equal(paid.json.method.retrieval, "browse");
+  assert.deepEqual(calls, ["browse", "browse"]);
+});
+
 test("GET /pubkey", async () => {
   const key = generateProcessKey();
   const app = createApp({ key, retrieve: async () => ({ text: FIXTURE }), funnelDir: null });
