@@ -1,0 +1,10 @@
+{
+  "cli": "agent-browser 0.35.1",
+  "engine": "chrome",
+  "args": [
+    "--no-sandbox"
+  ],
+  "url": "https://dummyjson.com/products/1",
+  "stock": 99,
+  "note": "Existing agent-browser CLI. Chromium was not added to this repo."
+}

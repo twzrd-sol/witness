@@ -6,9 +6,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtempSync, writeFileSync, readFileSync } from "node:fs";
-import os from "node:os";
+import { writeFileSync, readFileSync } from "node:fs";
 import path from "node:path";
+import { tempDir } from "./helpers/tmpdir.js";
 import { fileURLToPath } from "node:url";
 
 import {
@@ -116,12 +116,16 @@ test("decideSpend fail-closes on wash, block, missing payer, and unpaid-preferre
 });
 
 test("resolveDocumentedPayer never invents or accepts a stranger key", () => {
-  const tmp = mkdtempSync(path.join(os.tmpdir(), "w21-payer-"));
+  const tmp = tempDir("w21-payer-");
   const stranger = path.join(tmp, "stranger.json");
   writeFileSync(stranger, "[1,2,3]");
-  assert.equal(resolveDocumentedPayer({ env: {}, argv: [] }), null);
-  assert.equal(resolveDocumentedPayer({ env: { WITNESS_PAYER_KEYPAIR: stranger }, argv: [] }), null);
-  assert.equal(resolveDocumentedPayer({ env: {}, argv: [`--keypair=${stranger}`] }), null);
+  const implicit = resolveDocumentedPayer({ env: {}, argv: [] });
+  assert.ok(
+    implicit === null || DOCUMENTED_PAYER_PATHS.some((d) => path.resolve(d) === implicit),
+    "empty env may resolve a documented existing path, never a stranger",
+  );
+  assert.equal(resolveDocumentedPayer({ env: { WITNESS_PAYER_KEYPAIR: stranger }, argv: [] }), implicit);
+  assert.equal(resolveDocumentedPayer({ env: {}, argv: [`--keypair=${stranger}`] }), implicit);
   const minted = path.resolve(DOCUMENTED_PAYER_PATHS[0]);
   assert.equal(resolveDocumentedPayer({
     env: {},

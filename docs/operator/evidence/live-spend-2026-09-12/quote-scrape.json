@@ -1,0 +1,8 @@
+{
+  "price_usdc": "0.01",
+  "replicas": 1,
+  "can_deliver": true,
+  "retrieval": "scrape",
+  "verdict": "supported",
+  "verdict_reason": null
+}

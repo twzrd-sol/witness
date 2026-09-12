@@ -15,10 +15,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
-import { mkdtempSync, readFileSync } from "node:fs";
-import os from "node:os";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { tempDir } from "./helpers/tmpdir.js";
 
 import { createApp } from "../src/server.js";
 import { listenExclusive } from "../src/listen.js";
@@ -92,7 +92,7 @@ function host(extra = {}) {
     app: createApp({
       key: extra.key ?? generateProcessKey(),
       retrieve: extra.retrieve ?? (async () => ({ text: OFFER_FIXTURE })),
-      observationsDir: extra.observationsDir ?? mkdtempSync(path.join(os.tmpdir(), "wit-xff-")),
+      observationsDir: extra.observationsDir ?? tempDir("wit-xff-"),
       funnelDir: null,
       paywall: extra.paywall === undefined ? {} : extra.paywall,
       publicBaseUrl: "https://witness.example.net",
