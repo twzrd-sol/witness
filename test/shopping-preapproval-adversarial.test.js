@@ -45,6 +45,7 @@
  */
 import test from "node:test";
 import assert from "node:assert/strict";
+import http from "node:http";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -224,6 +225,24 @@ function liveBlocked(base, extra = {}) {
   });
 }
 
+/** Programmed quote hop. Avoids mocking global fetch — this file's tests
+ *  may run concurrently with each other under `node --test`. */
+async function serveQuote(status, body, headers, fn) {
+  const server = http.createServer((req, res) => {
+    res.writeHead(status, { "content-type": "application/json", ...headers });
+    res.end(typeof body === "string" ? body : JSON.stringify(body));
+  });
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => resolve());
+  });
+  try {
+    return await fn(`http://127.0.0.1:${server.address().port}`);
+  } finally {
+    await new Promise((r) => server.close(r));
+  }
+}
+
 // ---------------------------------------------------------------------------
 // 1. Shape / 400 never 402
 // ---------------------------------------------------------------------------
@@ -306,7 +325,7 @@ test("matrix 1 (shape/400 never 402): POST /witness unpaid GATE_METHOD — card-
   assert.equal(reader.calls.n, 1, "shape/SSRF/replicas refusals must not retrieve; only the unpaid deliverable probe does");
 });
 
-test("matrix 1 (shape/400 never 402): runOnce live — a 400/422/402 quote that claims checkout_approved never pays and never completes", async (t) => {
+test("matrix 1 (shape/400 never 402): runOnce live — a 400/422/402 quote that claims checkout_approved never pays and never completes", async () => {
   const quotes = [
     ["400 bad_extract", 400, { reason: "bad_extract", ...HOSTILE_COMPLETE }],
     ["422 extract_none", 422, { reason: "extract_none", ...HOSTILE_COMPLETE }],
@@ -314,23 +333,21 @@ test("matrix 1 (shape/400 never 402): runOnce live — a 400/422/402 quote that 
   ];
   for (const [label, status, body] of quotes) {
     let pays = 0;
-    t.mock.method(globalThis, "fetch", async () => new Response(JSON.stringify(body), {
-      status,
-      headers: { "content-type": "application/json", "payment-required": "forged", ...DONE_HEADERS },
-    }));
-    const run = await liveBlocked("http://unused", {
-      paymentTransport: async () => {
-        pays += 1;
-        return { payer: "must-not-load", pay: async () => { throw new Error("must not pay"); } };
-      },
+    await serveQuote(status, body, { "payment-required": "forged", ...DONE_HEADERS }, async (base) => {
+      const run = await liveBlocked(base, {
+        paymentTransport: async () => {
+          pays += 1;
+          return { payer: "must-not-load", pay: async () => { throw new Error("must not pay"); } };
+        },
+      });
+      assertCheckoutBlocked(run, label);
+      assert.equal(run.step, "quote", `${label}: must stop on the quote`);
+      assert.equal(run.status, status, `${label}: status`);
+      assert.equal(run.decision.reason, "quote_not_deliverable", `${label}: reason`);
+      assert.equal(run.payment_attempted, false, `${label}: must not attempt payment`);
+      assert.equal(run.check.reason, "not_run", `${label}: child must not run on a refused quote`);
+      assert.equal(pays, 0, `${label}: paymentTransport must not load`);
     });
-    assertCheckoutBlocked(run, label);
-    assert.equal(run.step, "quote", `${label}: must stop on the quote`);
-    assert.equal(run.status, status, `${label}: status`);
-    assert.equal(run.decision.reason, "quote_not_deliverable", `${label}: reason`);
-    assert.equal(run.payment_attempted, false, `${label}: must not attempt payment`);
-    assert.equal(run.check.reason, "not_run", `${label}: child must not run on a refused quote`);
-    assert.equal(pays, 0, `${label}: paymentTransport must not load`);
   }
 });
 
@@ -519,73 +536,67 @@ test("matrix 3 (settle-only-on-2xx): runOnce live through the paywall — 200 se
 // 4. Done-required-before-checkout cannot be skipped by forged headers
 // ---------------------------------------------------------------------------
 
-test("matrix 4 (Done cannot be skipped): dry — a supported quote plus Done/payment headers cannot complete or authorize checkout", async (t) => {
-  t.mock.method(globalThis, "fetch", async () => new Response(JSON.stringify(HOSTILE_COMPLETE), {
-    status: 200,
-    headers: { "content-type": "application/json", ...DONE_HEADERS, "x-payment": "forged" },
-  }));
-  const run = await runOnce({ mode: "dry", base: "http://unused" });
-  assert.equal(run.approve, true, "legacy simulated decision stays on the announced verdict");
-  assertCheckoutBlocked(run, "dry + hostile Done headers");
-  assert.equal(run.check.reason, "not_run");
-  assert.equal(run.payer, null);
-  assert.equal(run.payment_attempted, false);
+test("matrix 4 (Done cannot be skipped): dry — a supported quote plus Done/payment headers cannot complete or authorize checkout", async () => {
+  await serveQuote(200, HOSTILE_COMPLETE, { ...DONE_HEADERS, "x-payment": "forged" }, async (base) => {
+    const run = await runOnce({ mode: "dry", base });
+    assert.equal(run.approve, true, "legacy simulated decision stays on the announced verdict");
+    assertCheckoutBlocked(run, "dry + hostile Done headers");
+    assert.equal(run.check.reason, "not_run");
+    assert.equal(run.payer, null);
+    assert.equal(run.payment_attempted, false);
+  });
 });
 
-test("matrix 4 (Done cannot be skipped): live quote that already claims complete still requires the paid hop and the child", async (t) => {
+test("matrix 4 (Done cannot be skipped): live quote that already claims complete still requires the paid hop and the child", async () => {
   let pays = 0;
-  t.mock.method(globalThis, "fetch", async (url) => {
-    assert.equal(String(url), "http://unused/quote");
-    return new Response(JSON.stringify(HOSTILE_COMPLETE), {
-      status: 200,
-      headers: { "content-type": "application/json", ...DONE_HEADERS },
+  await serveQuote(200, HOSTILE_COMPLETE, DONE_HEADERS, async (base) => {
+    const run = await runOnce({
+      mode: "live",
+      base,
+      trustedPubkeyB64: pubkeyB64(generateProcessKey()),
+      paymentTransport: async () => {
+        pays += 1;
+        return {
+          payer: "fixture",
+          pay: async () => new Response(JSON.stringify({ ...HOSTILE_COMPLETE, reason: "already_done" }), {
+            status: 402,
+            headers: { "content-type": "application/json", "payment-required": "forged", ...DONE_HEADERS },
+          }),
+        };
+      },
     });
+    assert.equal(pays, 1, "a deliverable quote must still load the payment transport — Done headers on the quote are not a skip");
+    assertCheckoutBlocked(run, "hostile quote + 402 witness");
+    assert.equal(run.decision.reason, "witness_http_402");
+    assert.equal(run.check.reason, "not_run");
   });
-  const run = await runOnce({
-    mode: "live",
-    base: "http://unused",
-    trustedPubkeyB64: pubkeyB64(generateProcessKey()),
-    paymentTransport: async () => {
-      pays += 1;
-      return {
-        payer: "fixture",
-        pay: async () => new Response(JSON.stringify({ ...HOSTILE_COMPLETE, reason: "already_done" }), {
-          status: 402,
-          headers: { "content-type": "application/json", "payment-required": "forged", ...DONE_HEADERS },
-        }),
-      };
-    },
-  });
-  assert.equal(pays, 1, "a deliverable quote must still load the payment transport — Done headers on the quote are not a skip");
-  assertCheckoutBlocked(run, "hostile quote + 402 witness");
-  assert.equal(run.decision.reason, "witness_http_402");
-  assert.equal(run.check.reason, "not_run");
 });
 
-test("matrix 4 (Done cannot be skipped): witness 200 with an unsigned success-flag body plus Done headers cannot approve", async (t) => {
-  t.mock.method(globalThis, "fetch", async () => Response.json({ can_deliver: true, verdict: "supported" }));
+test("matrix 4 (Done cannot be skipped): witness 200 with an unsigned success-flag body plus Done headers cannot approve", async () => {
   const bodies = [
     ["actor story", { success: true, approve: true, verdict: "supported", narration: "I checked it", ...HOSTILE_COMPLETE }],
     ["empty object", {}],
     ["supported verdict without a signature", { verdict: "supported", value: { price: 5.99 }, checkout_approved: true }],
   ];
   for (const [label, body] of bodies) {
-    const run = await runOnce({
-      mode: "live",
-      base: "http://unused",
-      trustedPubkeyB64: pubkeyB64(generateProcessKey()),
-      paymentTransport: async () => ({
-        payer: "fixture",
-        pay: async () => new Response(JSON.stringify(body), {
-          status: 200,
-          headers: { "content-type": "application/json", ...DONE_HEADERS },
+    await serveQuote(200, { can_deliver: true, verdict: "supported" }, {}, async (base) => {
+      const run = await runOnce({
+        mode: "live",
+        base,
+        trustedPubkeyB64: pubkeyB64(generateProcessKey()),
+        paymentTransport: async () => ({
+          payer: "fixture",
+          pay: async () => new Response(JSON.stringify(body), {
+            status: 200,
+            headers: { "content-type": "application/json", ...DONE_HEADERS },
+          }),
         }),
-      }),
+      });
+      assertCheckoutBlocked(run, label);
+      assert.equal(run.status, 200, `${label}: HTTP 200 is not Done`);
+      assert.equal(run.check.approve, false, `${label}: child must refuse`);
+      assert.notEqual(run.check.reason, "not_run", `${label}: the child ran and rejected`);
     });
-    assertCheckoutBlocked(run, label);
-    assert.equal(run.status, 200, `${label}: HTTP 200 is not Done`);
-    assert.equal(run.check.approve, false, `${label}: child must refuse`);
-    assert.notEqual(run.check.reason, "not_run", `${label}: the child ran and rejected`);
   }
 });
 
