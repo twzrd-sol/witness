@@ -9,8 +9,9 @@ import {
   handleCompleteBounty,
   handleGetBounty,
   handlePostBounty,
+  withBountyLock,
 } from "../src/bounties.js";
-import { SELLER_OFFER_SCHEMA_VERSION } from "../src/seller.js";
+import { SELLER_OFFER_SCHEMA_VERSION, buildSellerCard } from "../src/seller.js";
 import { generateProcessKey } from "../src/receipt.js";
 import { createApp } from "../src/server.js";
 
@@ -52,6 +53,13 @@ test("post rejects bad posters and bad tasks with structured details", () => {
   assert.equal(badTask.json.error.reason, "bad_task");
 });
 
+test("poster cannot claim their own bounty", () => {
+  const posted = handlePostBounty({ poster: POSTER, task: TASK }, { id: "b1", now });
+  const self = handleClaimBounty(bountyState([posted.event]), "b1", { claimer: POSTER }, { now });
+  assert.equal(self.status, 409);
+  assert.equal(self.json.error.reason, "self_claim_refused");
+});
+
 test("claim binds the claimer card; a second claim is refused", () => {
   const posted = handlePostBounty({ poster: POSTER, task: TASK }, { id: "b1", now });
   const state = bountyState([posted.event]);
@@ -76,7 +84,7 @@ test("complete records the explicit outcome row future cards build from", () => 
   const done = handleCompleteBounty(state, "b1", { outcome: { decision: "accepted", delivery_minutes: 42 } }, { now });
   assert.equal(done.status, 200);
   assert.equal(done.json.data.bounty.status, "complete");
-  assert.deepEqual(done.json.data.bounty.outcome, { decision: "accepted", delivery_minutes: 42, completed_at: NOW });
+  assert.deepEqual(done.json.data.bounty.outcome, { status: "accepted", decision: "accepted", delivery_minutes: 42, completed_at: NOW });
 
   const bad = handleCompleteBounty(state, "b1", { outcome: { decision: "maybe" } }, { now });
   assert.equal(bad.status, 400);
@@ -85,6 +93,11 @@ test("complete records the explicit outcome row future cards build from", () => 
   const early = handleCompleteBounty(bountyState([posted.event]), "b1", { outcome: { decision: "accepted" } }, { now });
   assert.equal(early.status, 409);
   assert.equal(early.json.error.reason, "bounty_not_claimed");
+
+  const card = buildSellerCard(CLAIMER, [done.json.data.bounty.outcome]);
+  assert.equal(card.outcomes.completed_jobs, 1, "bounty outcome is a seller-card row, not a parallel vocabulary");
+  assert.equal(card.outcomes.accepted_jobs, 1);
+  assert.equal(card.outcomes.median_delivery_minutes, 42);
 });
 
 test("fold ignores out-of-order and unknown events; get reads one record", () => {
@@ -124,7 +137,65 @@ test("HTTP round-trip: post → claim → complete → get, state survives per-r
 
     const missing = await fetch(`${base}/bounties/does-not-exist`);
     assert.equal(missing.status, 404);
+
+    const badJson = await fetch(`${base}/bounties`, { method: "POST", headers: { "content-type": "application/json" }, body: "{not json" });
+    assert.equal(badJson.status, 400);
+    const badBody = await badJson.json();
+    assert.equal(badBody.success, false);
+    assert.equal(badBody.error.reason, "bad_json");
+    assert.equal(badBody.data, null);
   } finally {
     await new Promise((r) => server.close(r));
   }
+});
+
+test("concurrent claims: exactly one winner, the loser is 409", async () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "wit-bounty-race-"));
+  const app = createApp({ key: generateProcessKey(), retrieve: async () => ({ text: "x" }), observationsDir: dir, bountiesDir: dir });
+  const server = app.listen(0, "127.0.0.1");
+  await new Promise((r) => server.once("listening", r));
+  try {
+    const base = `http://127.0.0.1:${server.address().port}`;
+    const posted = await (await fetch(`${base}/bounties`, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ poster: POSTER, task: TASK }),
+    })).json();
+    const id = posted.data.bounty.id;
+    const claimerB = { ...CLAIMER, seller_id: "agent:hunter-8", payout_wallet: "0xaaa0000000000000000000000000000000000003" };
+    const claim = (claimer) => fetch(`${base}/bounties/${id}/claim`, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ claimer }),
+    });
+    const [a, b] = await Promise.all([claim(CLAIMER), claim(claimerB)]);
+    const statuses = [a.status, b.status].sort();
+    assert.deepEqual(statuses, [200, 409]);
+    const got = await (await fetch(`${base}/bounties/${id}`)).json();
+    assert.equal(got.data.bounty.status, "claimed");
+    assert.equal(got.data.bounty.claim.claimer_card.seller_id === CLAIMER.seller_id
+      || got.data.bounty.claim.claimer_card.seller_id === claimerB.seller_id, true);
+  } finally {
+    await new Promise((r) => server.close(r));
+  }
+});
+
+test("withBountyLock serializes overlapping writers", async () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "wit-bounty-lock-"));
+  const order = [];
+  await Promise.all([
+    Promise.resolve().then(async () => {
+      await withBountyLock(dir, async () => {
+        order.push("a-start");
+        await new Promise((r) => setTimeout(r, 30));
+        order.push("a-end");
+      });
+    }),
+    Promise.resolve().then(async () => {
+      await new Promise((r) => setTimeout(r, 5));
+      await withBountyLock(dir, async () => {
+        order.push("b-start");
+        order.push("b-end");
+      });
+    }),
+  ]);
+  assert.deepEqual(order, ["a-start", "a-end", "b-start", "b-end"]);
 });

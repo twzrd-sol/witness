@@ -86,6 +86,8 @@ export async function handleMcpQuote(body, { fetch: doFetch = globalThis.fetch }
     return { status: 400, json: { reason: "bad_assertion" } };
   if (body.replicas !== undefined && body.replicas !== 1)
     return { status: 422, json: { reason: "replicas_unsupported" } };
+  if (body.prior_receipt !== undefined)
+    return { status: 422, json: { reason: "prior_receipt_unsupported_on_mcp" } };
   try {
     await assertProbeableUrl(body.url);
   } catch (e) {
@@ -94,7 +96,7 @@ export async function handleMcpQuote(body, { fetch: doFetch = globalThis.fetch }
   }
   let text;
   try {
-    const res = await doFetch(body.url, { signal: AbortSignal.timeout(PROBE_TIMEOUT_MS), headers: { accept: "text/plain" } });
+    const res = await doFetch(body.url, { signal: AbortSignal.timeout(PROBE_TIMEOUT_MS), redirect: "manual", headers: { accept: "text/plain" } });
     if (!res.ok) return { status: 422, json: { reason: "retrieve_failed" } };
     text = await res.text();
   } catch {
@@ -126,7 +128,7 @@ export function renderMcpQuote(out, args) {
   const assertion = args && typeof args.assertion === "string" ? args.assertion : "no assertion";
   const lines = [
     `${String(verdict ?? "no_verdict").toUpperCase()} — ${assertion}`,
-    "can_deliver: true (free probe; the signed receipt is POST /witness over HTTP + $0.01 x402)",
+    "probe_ok: true (direct fetch, not reader.outbid.sh; confirm POST /quote before paying POST /witness)",
   ];
   if (out.json.verdict_reason) lines.push(`reason: ${out.json.verdict_reason}`);
   if (out.json.missing) lines.push(`missing: ${JSON.stringify(out.json.missing)}`);
@@ -148,7 +150,7 @@ const quoteInputSchema = {
     extract: { type: "object", description: 'Field name -> expected type ("number" | "string", or {"type": ...} spelling).' },
     assertion: { type: "string", description: 'Optional post-condition, grammar "<key> <op> <literal>". Omit for a bare extract.' },
     replicas: { type: "integer", description: "Must be 1 when present." },
-    prior_receipt: { type: "object", description: "Not supported on this direct probe (no Change Proof here); use POST /quote. Ignored when present." },
+    prior_receipt: { type: "object", description: "Not supported on this direct probe. If present, the tool returns 422 prior_receipt_unsupported_on_mcp — use POST /quote." },
   },
 };
 
@@ -187,9 +189,9 @@ export function createMcpServer(deps = {}) {
     {
       name: "witness_quote",
       description:
-        "Free deliverability probe for a paid observation (direct fetch, one request, no reader spend). " +
-        "200 renders the verdict the paid receipt would carry; 422 is JSON with a fixed-vocabulary reason and is never billed. " +
-        "The paid observation itself stays POST /witness over HTTP with x402.",
+        "Local direct-fetch probe (no reader.outbid.sh). Verdict vocabulary matches POST /quote, but this is not a paid-pipeline quote — " +
+        "JS-rendered pages and reader envelopes can differ. Confirm with POST /quote before paying POST /witness. " +
+        "422 is JSON with a fixed-vocabulary reason and is never billed. prior_receipt is refused (Change Proof is HTTP-only).",
       inputSchema: quoteInputSchema,
     },
     {

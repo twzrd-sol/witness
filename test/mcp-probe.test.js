@@ -35,6 +35,31 @@ async function withClient(deps, fn) {
   }
 }
 
+test("probe refuses prior_receipt instead of silently dropping Change Proof", async () => {
+  let fetched = 0;
+  const fetch = async () => (fetched++, { ok: true, text: async () => "<p>price: 5.99</p>" });
+  const out = await handleMcpQuote({
+    url: "https://example.com/x",
+    extract: { price: "number" },
+    prior_receipt: { receipt: "nope" },
+  }, { fetch });
+  assert.equal(out.status, 422);
+  assert.equal(out.json.reason, "prior_receipt_unsupported_on_mcp");
+  assert.equal(fetched, 0);
+});
+
+test("probe does not follow redirects (no SSRF hop onto link-local)", async () => {
+  let init;
+  const fetch = async (_url, opts) => {
+    init = opts;
+    return { ok: false, status: 302, headers: { get: () => "http://169.254.169.254/latest/meta-data/" }, text: async () => "" };
+  };
+  const out = await handleMcpQuote({ url: "https://example.com/hop", extract: { a: "number" } }, { fetch });
+  assert.equal(out.status, 422);
+  assert.equal(out.json.reason, "retrieve_failed");
+  assert.equal(init.redirect, "manual", "native fetch must not follow Location");
+});
+
 test("probe refuses cloud-metadata and RFC1918 without fetching", async () => {
   let fetched = 0;
   const fetch = async () => (fetched++, { ok: true, text: async () => "<p>a: 1</p>" });

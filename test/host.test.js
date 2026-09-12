@@ -92,6 +92,12 @@ test("reader payment wiring: payFetch only when enabled AND valid wallet key", a
   assert.equal(typeof pay.payFetch, "function");
   const res = await pay.payFetch("https://reader.outbid.sh/scrape?url=https%3A%2F%2Fexample.com%2Ftop");
   assert.equal(res.ok, true, "a 200 passes through the paying wrapper untouched, no payment made");
+  assert.equal(pay.maxAmountPerPayment, "$0.005", "scrape ceiling is bound before any sign");
+  await assert.rejects(
+    () => pay.payFetch("https://evil.example/scrape?url=https%3A%2F%2Fexample.com%2Ftop"),
+    /reader_host_refused/,
+    "paying fetch is pinned to reader.outbid.sh",
+  );
 });
 
 test("x402 descriptor empty without payTo env; quote 200 + unpaid witness 402 via mocked reader", async () => {

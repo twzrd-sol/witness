@@ -97,7 +97,8 @@ test("MCP quote and seller tools behave like the HTTP handlers", async () => {
     });
     const good = parseToolText(goodQuote);
     assert.match(good, /SUPPORTED/);
-    assert.match(good, /can_deliver: true/);
+    assert.match(good, /probe_ok: true/);
+    assert.match(good, /not reader\.outbid\.sh/);
     assert.equal(fetchCalls.length, 1, "quote tool fetches once per call");
 
     const missQuote = await client.callTool({

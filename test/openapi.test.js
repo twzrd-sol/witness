@@ -14,6 +14,10 @@ test("openapi contract: quote free, witness quote-first paid x402, canonical ori
   const q = doc.paths["/quote"].post;
   assert.deepEqual(Object.keys(q.responses).sort(), ["200", "400", "422", "429"]);
   assert.match(q.description, /Never bills/);
+  const q200 = q.responses["200"].content["application/json"].schema.properties;
+  assert.deepEqual(q200.verdict.enum, ["supported", "contradicted", "incomplete"]);
+  assert.ok(q200.verdict_reason);
+  assert.equal(q200.missing.type, "array");
   assert.deepEqual(q.security, [], "quote is explicitly public — free, no auth requirement");
 
   const s = doc.paths["/seller/offer/validate"].post;

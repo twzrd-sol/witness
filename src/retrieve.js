@@ -17,7 +17,11 @@ export function unwrapReader(text) {
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return text;
   // The reader reporting its own failure is a retrieval failure, not a document.
   if (parsed.ok === false) throw new Error("reader_not_ok");
-  return typeof parsed.content === "string" && parsed.content.trim() ? parsed.content : text;
+  if (typeof parsed.content === "string" && parsed.content.trim()) return parsed.content;
+  // ok:true with blank/missing content is a failed retrieve, not a document whose
+  // fields are the transport keys (title, ok, content).
+  if (parsed.ok === true) throw new Error("reader_empty");
+  return text;
 }
 
 /**
@@ -32,7 +36,7 @@ export function unwrapReader(text) {
  * reader.outbid.sh only). A paying retry that fails is still fail-closed.
  */
 export function makeRetrieve({ fetch: doFetch = globalThis.fetch, payFetch, paymentsEnabled = process.env.X402_READER_PAYMENTS_ENABLED === "1", readerUrl = process.env.READER_URL || READER_DEFAULT, timeoutMs = 20000 } = {}) {
-  const attempt = (f, url) => f(`${readerUrl}?url=${encodeURIComponent(url)}`, { signal: AbortSignal.timeout(timeoutMs), headers: { accept: "text/plain" } });
+  const attempt = (f, url) => f(`${readerUrl}?url=${encodeURIComponent(url)}`, { signal: AbortSignal.timeout(timeoutMs), redirect: "manual", headers: { accept: "text/plain" } });
   return async function retrieve(url) {
     if (typeof url !== "string" || !url.startsWith("https://")) throw new Error("retrieve_refused");
     let res = await attempt(doFetch, url);

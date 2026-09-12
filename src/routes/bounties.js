@@ -7,6 +7,7 @@ import {
   handleGetBounty,
   handlePostBounty,
   readBountyEvents,
+  withBountyLock,
 } from "../bounties.js";
 
 /**
@@ -20,13 +21,11 @@ import {
 export function createBountiesRouter({ storeDir = "data" } = {}) {
   const router = express.Router();
   const withState = (fn) => (req, res, next) => {
-    try {
-      const out = fn(bountyState(readBountyEvents(storeDir)), req);
-      if (out.event) appendBountyEvent(storeDir, out.event);
-      res.status(out.status).json(out.json);
-    } catch (e) {
-      next(e);
-    }
+    withBountyLock(storeDir, () => {
+      const decided = fn(bountyState(readBountyEvents(storeDir)), req);
+      if (decided.event) appendBountyEvent(storeDir, decided.event);
+      return decided;
+    }).then((out) => res.status(out.status).json(out.json)).catch(next);
   };
   router.post("/bounties", withState((state, req) => handlePostBounty(req.body)));
   router.post("/bounties/:id/claim", withState((state, req) => handleClaimBounty(state, req.params.id, req.body)));

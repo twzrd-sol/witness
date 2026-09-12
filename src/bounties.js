@@ -1,4 +1,4 @@
-import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
+import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readFileSync, unlinkSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { buildSellerCard, validateSellerOffer } from "./seller.js";
@@ -18,6 +18,34 @@ import { buildSellerCard, validateSellerOffer } from "./seller.js";
  */
 
 export const BOUNTY_EVENTS_FILE = "bounties.ndjson";
+const BOUNTY_LOCK_FILE = ".bounties.lock";
+
+/** Exclusive lock around read-fold-append so two processes sharing a store
+ *  cannot both claim the same open bounty. Single-process HTTP is already
+ *  serialized (the handler is sync); this covers a second listener on the
+ *  same directory. */
+export async function withBountyLock(dir, fn) {
+  mkdirSync(dir, { recursive: true });
+  const lockPath = path.join(dir, BOUNTY_LOCK_FILE);
+  const deadline = Date.now() + 5000;
+  let fd;
+  while (true) {
+    try {
+      fd = openSync(lockPath, "wx");
+      break;
+    } catch (e) {
+      if (e.code !== "EEXIST") throw e;
+      if (Date.now() > deadline) throw new Error("bounty_lock_timeout");
+      await new Promise((r) => setTimeout(r, 5));
+    }
+  }
+  try {
+    return await fn();
+  } finally {
+    closeSync(fd);
+    try { unlinkSync(lockPath); } catch { /* next waiter retries */ }
+  }
+}
 
 const err = (field, reason) => ({ field, reason });
 const fail = (status, reason, details = []) => ({ status, json: { success: false, error: { reason, details }, data: null } });
@@ -109,6 +137,7 @@ export function handleClaimBounty(state, id, body, { now = () => new Date().toIS
   const offer = body && typeof body === "object" && !Array.isArray(body) ? body.claimer : undefined;
   const checked = validateSellerOffer(offer);
   if (!checked.valid) return { ...fail(400, "bad_claimer_offer", checked.errors) };
+  if (offer.seller_id === found.bounty.poster_card.seller_id) return fail(409, "self_claim_refused");
   const at = now();
   const event = { type: "claimed", id, claimer: offer, at };
   const next = structuredClone(found.bounty);
@@ -133,7 +162,8 @@ export function handleCompleteBounty(state, id, body, { now = () => new Date().t
   const event = {
     type: "completed",
     id,
-    outcome: { decision: outcome.decision, delivery_minutes: outcome.delivery_minutes ?? null, completed_at: at },
+    // `status` is the seller-card field; `decision` is the request spelling.
+    outcome: { status: outcome.decision, decision: outcome.decision, delivery_minutes: outcome.delivery_minutes ?? null, completed_at: at },
     at,
   };
   const next = structuredClone(found.bounty);
