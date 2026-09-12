@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://witness.outbid.sh/schemas/shopping-mandate-v1.json",
   "title": "Witness shopping mandate (digital-product pilot)",
-  "description": "Operator-signed, subject-bound spend authority for the narrow x402 digital-product pilot. No Shopify store URL, cart permalink, or merchant checkout URL is required or permitted. Validate this schema before signature verification. Caller-supplied public keys are never a trust anchor — the issuer pin is supplied independently.",
+  "description": "Operator-signed, subject-bound spend authority for the narrow x402 digital-product pilot. No Shopify store URL, cart permalink, or merchant checkout URL is required or permitted on this document. Operator env SHOPIFY_STORE_URL is a separate no-op until set (see shopify-store-url-env-v1.json) and is never copied here. Validate this schema before signature verification. Caller-supplied public keys are never a trust anchor — the issuer pin is supplied independently.",
   "type": "object",
   "additionalProperties": false,
   "required": [

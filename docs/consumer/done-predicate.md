@@ -39,8 +39,8 @@ All eleven must hold. `INCOMPLETE` is the default and a legal terminal state.
 
 Related checkers, different claims: `scripts/verify-shopping-receipt.mjs` is the
 shopping-preapproval observation gate; `src/shopping-mandate.js` `evaluateDone`
-is the mandate-bound x402 digital-product gate (no Shopify store URL). Do not
-treat one report as the other.
+is the mandate-bound x402 digital-product gate (no store URL required;
+`SHOPIFY_STORE_URL` no-ops until set). Do not treat one report as the other.
 
 ## Scoring
 
