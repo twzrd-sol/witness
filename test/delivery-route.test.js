@@ -38,6 +38,7 @@ function fakeAttest({ verdict = "delivered", reasons = [], downgrade = false, re
       http_status: observation.http_status,
       seller_signature_present: Boolean(observation.seller_signature),
       verifier: opts.verifier,
+      spec_origin: offer.spec_origin ?? "buyer_authored",
       resource_url: offer.resource_url,
       deliverable_class: offer.deliverable_class,
       price_usdc: offer.price_usdc,
@@ -69,7 +70,7 @@ const verifyOffline = (data, pubkeyB64) => {
   return verify(null, Buffer.from(canonical(rest)), key, Buffer.from(receipt, "base64"));
 };
 
-test("POST /delivery/attest: signed receipt in the envelope, model fields verbatim, verifiable against GET /pubkey", async () => {
+test("POST /delivery/attest: signed receipt bare (no envelope), model fields verbatim, verifiable against GET /pubkey", async () => {
   const fake = fakeAttest();
   await withServer(async (base) => {
     const body = example();
@@ -149,7 +150,7 @@ test("a seller_integrated claim the model downgrades keeps both modes visible", 
   }, { attest: fake.attest, verifySellerSignature: async () => ({ verified: true, reason: "seller_signature_verified", rail: "solana", checked: ["signer_matches_payto"], signer: "7VCU12sqMGTpiiwHPsrY2tfNDFqCj53htba1RX1fT5og" }) });
 });
 
-test("unreadable bodies are 400 bad_json in the envelope; a JSON array is bad_body; the model is never called", async () => {
+test("unreadable bodies are 400 bad_json (bare error body); a JSON array is bad_body; the model is never called", async () => {
   const fake = fakeAttest();
   await withServer(async (base) => {
     for (const [body, headers] of [
@@ -256,7 +257,7 @@ test("no model in the process is 503 attest_not_wired; a lazily imported model i
   assert.equal(fake.calls.length, 2);
 });
 
-test("a body over the limit is 413 body_too_large in the envelope", async () => {
+test("a body over the limit is 413 body_too_large (bare error body)", async () => {
   const fake = fakeAttest();
   await withServer(async (base) => {
     const body = example();
@@ -269,28 +270,53 @@ test("a body over the limit is 413 body_too_large in the envelope", async () => 
   assert.equal(fake.calls.length, 0);
 });
 
-test("openapi documents /delivery/attest: public, enveloped, every reason distinct, limits required in the receipt", () => {
+test("openapi documents /delivery/attest as the wire: bare 200 receipt, bare 4xx/5xx, no envelope", () => {
   const doc = openapiDoc({});
   const op = doc.paths["/delivery/attest"].post;
   assert.deepEqual(op.security, [], "no auth in this lane, and the doc says so");
   assert.deepEqual(Object.keys(op.responses).sort(), ["200", "400", "413", "500", "503"]);
   assert.match(op.description, /unable_to_verify, not an error/);
   assert.match(op.description, /this_receipt_proves/);
+  assert.doesNotMatch(op.description, /in the same envelope|Verify data\.receipt|request_metadata/);
   const req = op.requestBody.content["application/json"];
   assert.deepEqual(req.example, EXAMPLE_BODY);
   assert.deepEqual(req.schema.required, ["offer", "request", "observation"]);
   assert.deepEqual(req.schema.properties.observation.properties.mode.enum, [...MODES]);
+  assert.deepEqual(req.schema.properties.offer.properties.spec_origin.enum, ["buyer_authored", "seller_published", "catalog_observed"]);
   const ok = op.responses["200"].content["application/json"].schema;
-  assert.equal(ok.properties.success.const, true);
-  for (const f of ["delivery_verdict", "evidence_mode", "declared_mode", "this_receipt_proves", "this_receipt_does_not_prove", "attested_at", "receipt"]) assert.ok(ok.properties.data.required.includes(f), `receipt schema requires ${f}`);
-  assert.deepEqual(ok.properties.data.properties.delivery_verdict.enum, [...DELIVERY_VERDICTS]);
-  assert.equal(ok.properties.request_metadata.properties.auth.type, "null");
-  assert.equal(ok.properties.request_metadata.properties.payment.type, "null");
-  const reasons = (code) => op.responses[code].content["application/json"].schema.properties.error.properties.reason.enum;
+  assert.equal(ok.properties?.success, undefined, "200 is the receipt, not {success, data, request_metadata}");
+  assert.equal(ok.properties?.data, undefined);
+  assert.equal(ok.properties?.request_metadata, undefined);
+  for (const f of ["delivery_verdict", "evidence_mode", "declared_mode", "spec_origin", "this_receipt_proves", "this_receipt_does_not_prove", "attested_at", "receipt"]) {
+    assert.ok(ok.required.includes(f), `receipt schema requires ${f}`);
+  }
+  assert.deepEqual(ok.properties.delivery_verdict.enum, [...DELIVERY_VERDICTS]);
+  const reasons = (code) => op.responses[code].content["application/json"].schema.properties.reason.enum;
+  const failRequired = (code) => op.responses[code].content["application/json"].schema.required;
+  for (const code of ["400", "413", "500", "503"]) {
+    assert.deepEqual(failRequired(code).sort(), ["details", "reason", "served_at", "verifier"]);
+  }
   assert.deepEqual(reasons("400"), ["bad_json", "bad_body", "bad_offer", "bad_paid_request", "bad_observation", "bad_mode"]);
   assert.deepEqual(reasons("413"), ["body_too_large"]);
   assert.deepEqual(reasons("500"), ["attest_failed", "attest_invalid", "internal_error"]);
   assert.deepEqual(reasons("503"), ["attest_not_wired"]);
   const all = ["400", "413", "500", "503"].flatMap(reasons);
   assert.equal(new Set(all).size, all.length, "reasons are distinct across statuses");
+});
+
+test("HTTP path forwards offer.spec_origin so the signed field is not always buyer_authored", async () => {
+  const fake = fakeAttest();
+  const body = example();
+  body.offer = { ...body.offer, spec_origin: "seller_published" };
+  const out = await handleDeliveryAttest(body, {
+    attest: fake.attest,
+    key: generateProcessKey(),
+    verifier: "witness.outbid.sh",
+    now: () => "2026-09-11T04:00:21.000Z",
+    verifySellerSignature: async () => ({ verified: false, reason: "signature_absent", rail: null, checked: [] }),
+  });
+  assert.equal(out.status, 200);
+  assert.equal(fake.calls.length, 1);
+  assert.equal(fake.calls[0].offer.spec_origin, "seller_published");
+  assert.equal(out.json.spec_origin, "seller_published");
 });

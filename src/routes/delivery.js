@@ -1,6 +1,6 @@
 import express from "express";
 import { signReceipt } from "../receipt.js";
-import { hashValue, offerHash, requestHash } from "../delivery.js";
+import { hashValue, offerHash, requestHash, SPEC_ORIGINS } from "../delivery.js";
 
 // Lazily resolved so a process without the verifier fails loudly at use, not at boot.
 let _verifier = null;
@@ -70,6 +70,7 @@ const loadVerifier = async () => (_verifier ??= (await import("../delivery-signa
 
 export const ROUTE = "/delivery/attest";
 export const MODES = Object.freeze(["buyer_attested", "seller_integrated", "verifier_observed"]);
+export { SPEC_ORIGINS };
 export const DELIVERY_VERDICTS = Object.freeze(["delivered", "contradicted", "incomplete", "unable_to_verify"]);
 /** Type vocabulary an offer spec may name for a required field (mirrors the model's grader). */
 export const SPEC_TYPES = Object.freeze(["string", "number", "boolean", "array", "object"]);
@@ -112,6 +113,9 @@ function checkOffer(o) {
       else for (const [k, t] of Object.entries(rf)) if (!SPEC_TYPES.includes(t)) p.push(`offer.spec.required_fields.${k}: type must be one of ${SPEC_TYPES.join("|")}`);
     }
     if (o.spec.must_equal !== undefined && !isObj(o.spec.must_equal)) p.push("offer.spec.must_equal: object of field -> literal required");
+  }
+  if (o.spec_origin !== undefined && !SPEC_ORIGINS.includes(o.spec_origin)) {
+    p.push(`offer.spec_origin: must be one of ${SPEC_ORIGINS.join("|")} when present`);
   }
   return p;
 }
@@ -192,8 +196,9 @@ export async function handleDeliveryAttest(body, deps = {}) {
   if (!MODES.includes(body.observation.mode)) return fail(400, "bad_mode", { problems: [`observation.mode "${body.observation.mode}" is not an evidence mode`], expected: [...MODES], example: EXAMPLE_BODY.observation.mode });
 
   // Pass the model exactly the fields it hashes, with the optional ones made explicit.
-  const { resource_url, deliverable_class, price_usdc, spec } = body.offer;
+  const { resource_url, deliverable_class, price_usdc, spec, spec_origin } = body.offer;
   const offer = { resource_url, deliverable_class, price_usdc, spec };
+  if (spec_origin !== undefined) offer.spec_origin = spec_origin;
   const request = { request_body: body.request.request_body, settlement_ref: body.request.settlement_ref ?? null, requested_at: body.request.requested_at };
   const o = body.observation;
   const observation = { artifact: o.artifact, observed_at: o.observed_at, mode: o.mode, http_status: o.http_status ?? null, seller_signature: o.seller_signature ?? null, notes: o.notes ?? [] };
