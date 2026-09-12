@@ -216,6 +216,13 @@ export function start(env = process.env) {
   const host = env.HOST || "127.0.0.1";
   const port = Number(env.PORT || 4032);
   const server = createHostApp(env).listen(port, host, () => console.log(`witness listening on http://${host}:${port}`));
+  // Express 5's listen no longer turns a bound port into an uncaught exception;
+  // without this handler the process has nothing on the event loop and exits 0,
+  // which systemd Restart=on-failure reads as a clean stop.
+  server.on("error", (e) => {
+    console.error("witness: listen error — exiting 1 for systemd to restart", e && (e.stack || e.message || e));
+    process.exit(1);
+  });
   return server;
 }
 
