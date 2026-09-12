@@ -2,8 +2,8 @@
 
 2026-09-12. Schema plus a library Done predicate for the narrow x402 digital-product
 pilot. No Shopify store URL is required. `SHOPIFY_STORE_URL` is env-gated and a
-no-op until set. This increment does not add routes, does not pay, and does not
-touch the human merchant-checkout rail.
+no-op until set (`src/shopify-mandate-stub.js`). This increment does not add
+routes, does not pay, and does not touch the human merchant-checkout rail.
 
 Mandate field names follow the consumer implementation contract
 (`implementation-contract.md`) and the wzrd-final / twzrd-x402-gate `Mandate`
@@ -44,12 +44,15 @@ Unsigned example: [`schemas/examples/digital-product-mandate.json`](schemas/exam
 trust anchor.
 
 Library: `src/shopping-mandate.js` (`validateMandate`, `signMandate`,
-`verifyMandate`, `resolveStoreUrl`, `evaluateDone`).
+`verifyMandate`, `evaluateDone`). Store URL env lives in
+`src/shopify-mandate-stub.js` (`resolveStoreUrl`, `evaluateShopifyMandateStub`).
 
 ## Env-gated store URL
 
 `SHOPIFY_STORE_URL` is operator env, not a mandate field. Resolution schema:
 [`schemas/shopify-store-url-env-v1.json`](schemas/shopify-store-url-env-v1.json).
+Stub report schema:
+[`schemas/shopify-mandate-stub-v1.json`](schemas/shopify-mandate-stub-v1.json).
 
 | Env | `resolveStoreUrl` | Done |
 | --- | --- | --- |
@@ -57,9 +60,16 @@ Library: `src/shopping-mandate.js` (`validateMandate`, `signMandate`,
 | valid `https://` URL, no userinfo | `enabled: true`, `reason: store_url_configured` | reported on `evaluateDone.store`; not a predicate; never fetched |
 | set but not a usable https URL | `ok: false`, `reason: store_url_invalid` | reported; still not a Done predicate |
 
-`evaluateDone` reads `opts.env` or `process.env`. It reports `{ env, enabled, reason }`
-and does not echo the URL. A configured store URL cannot complete a merchant
-checkout quote. `.env.example` documents the variable as optional.
+`evaluateShopifyMandateStub` is the Shopify mandate stub. Unset/blank is
+`unset_noop`. A valid https value is `configured_noop` (armed, still not live).
+A set but unusable value is `invalid_noop`. The stub never fetches, never
+invents a URL, never echoes `store_url`, and cannot set `completion` or
+`checkout_approved`. Caller-supplied `store_url` is ignored.
+
+`evaluateDone` reads `opts.env` or `process.env` through that stub and reports
+`store: { env, ok, enabled, reason }` without echoing the URL. A configured
+store URL cannot complete a merchant checkout quote. `.env.example` documents
+the variable as optional.
 
 ## Done predicate
 
@@ -110,14 +120,14 @@ rewrite the human rail.
 ## What this increment does not do
 
 - No `POST /authorize-purchase` route, no SQLite reservation ledger.
-- No live Shopify, no required store URL, no card rail.
+- No live Shopify, no required store URL, no invented store URL, no card rail.
 - No settlement checker. A signed mandate plus a quote is not payment.
 - A report from `evaluateDone` is not a signed authorization token for another service.
 
 ## Offline verification
 
 ```sh
-node --test test/shopping-mandate.test.js test/human-checkout-untouched.test.js
+node --test test/shopping-mandate.test.js test/shopify-mandate-stub.test.js test/human-checkout-untouched.test.js
 npm test
 git diff --check
 ```

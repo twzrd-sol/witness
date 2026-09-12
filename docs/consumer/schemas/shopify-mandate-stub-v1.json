@@ -1,0 +1,90 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://witness.outbid.sh/schemas/shopify-mandate-stub-v1.json",
+  "title": "Shopify mandate stub report (digital-product pilot)",
+  "description": "Env-gated stub for a future Shopify-bound mandate path. Unset or blank SHOPIFY_STORE_URL is a no-op. A set value is validated as https with no userinfo and is never fetched. The stub does not invent a store URL, does not complete checkout, and is not a Done predicate. Operator env only — never a signed-mandate field.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "kind",
+    "live_store",
+    "fetched",
+    "invented",
+    "armed",
+    "action",
+    "store",
+    "completion",
+    "checkout_approved",
+    "check"
+  ],
+  "properties": {
+    "kind": {
+      "const": "witness.shopify_mandate_stub.v1",
+      "description": "Stub report domain. An observation receipt or shopping mandate is not this document."
+    },
+    "live_store": {
+      "const": false,
+      "description": "This increment never contacts a live store."
+    },
+    "fetched": {
+      "const": false,
+      "description": "The stub never fetches. A configured URL is not a retrieval."
+    },
+    "invented": {
+      "const": false,
+      "description": "No default store URL is synthesized. Only SHOPIFY_STORE_URL is read."
+    },
+    "armed": {
+      "type": "boolean",
+      "description": "true only when a valid https store URL is configured. Armed is still a no-op for live work."
+    },
+    "action": {
+      "type": "string",
+      "enum": ["unset_noop", "configured_noop", "invalid_noop"]
+    },
+    "store": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["env", "ok", "enabled", "reason"],
+      "properties": {
+        "env": {
+          "const": "SHOPIFY_STORE_URL"
+        },
+        "ok": {
+          "type": "boolean",
+          "description": "false only when the env is set and the value is not a usable https URL."
+        },
+        "enabled": {
+          "type": "boolean",
+          "description": "true only when a valid https store URL is configured. Never implies a live call."
+        },
+        "reason": {
+          "type": "string",
+          "enum": ["store_url_unset", "store_url_configured", "store_url_invalid"]
+        }
+      }
+    },
+    "completion": {
+      "const": "incomplete",
+      "description": "The stub cannot grant Done."
+    },
+    "checkout_approved": {
+      "const": false,
+      "description": "The stub cannot approve checkout. Human merchant-checkout stays on the offers rail."
+    },
+    "check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["approve", "reason"],
+      "properties": {
+        "approve": {
+          "const": false
+        },
+        "reason": {
+          "type": "string",
+          "enum": ["store_url_unset", "store_url_invalid", "store_url_configured_not_live"]
+        }
+      }
+    }
+  }
+}

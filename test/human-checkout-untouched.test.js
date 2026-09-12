@@ -200,6 +200,7 @@ test("mandate library does not import the merchant rail or name a storefront", (
   assert.doesNotMatch(MANDATE_SRC, /authorize-purchase|catalog\.shopify/i);
   assert.doesNotMatch(MANDATE_SRC, /\bfetch\s*\(/);
   assert.match(MANDATE_SRC, /from ["']\.\/receipt\.js["']/);
+  assert.match(MANDATE_SRC, /shopify-mandate-stub/);
 });
 
 test("merchant rail, HTTP host, and preapproval do not import the mandate library", () => {
@@ -216,7 +217,7 @@ test("merchant rail, HTTP host, and preapproval do not import the mandate librar
   ];
   for (const f of files) {
     const src = rel(f);
-    assert.doesNotMatch(src, /shopping-mandate/, f);
+    assert.doesNotMatch(src, /shopping-mandate|shopify-mandate-stub/, f);
   }
   assert.doesNotMatch(OFFERS_SRC, /evaluateDone|validateMandate|signMandate|verifyMandate/);
   assert.doesNotMatch(OFFERS_ROUTE_SRC, /evaluateDone|shopping-mandate|checkout_approved/);
