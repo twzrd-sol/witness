@@ -5,3 +5,6 @@
 node_modules
 data/
 .env
+
+# Local rust build dir; never stage (multi-GB).
+.cargo-target-durable/

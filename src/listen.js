@@ -39,6 +39,8 @@ const PAYOUT = `{"claim_url":"https://deskcrew.io/api/arena/contests","claim":{"
 
 const LLMS = `# witness
 
+> Layer: signed fact about a public URL (supported | contradicted | incomplete), or a signed delta vs a prior receipt. $0.01 USDC. Retrieves via Reader; does not sell markdown; does not score counterparties (TWZRD). First POST /witness is one observation. Change Proof is the second.
+>
 > Confirm a published price, a stock number, a release, a ranking, or that a public record is present — and get a signed, time-bounded receipt. $0.01 USDC over x402.
 
 - POST /quote — free deliverability probe. 200 = the observation can be performed now, and the body announces the verdict you will be issued; 422 = not. Nothing is billed either way. Default retrieval is scrape ($0.01). A JS wall is a free 422 needs_browser — send retrieval=browse ($0.06) yourself. Scrape never auto-upgrades.
