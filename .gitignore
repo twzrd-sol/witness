@@ -5,3 +5,6 @@
 node_modules
 data/
 .env
+
+# Local serve worktree pin; updated by docs/operator/witness-serve-pin.md refresh.
+SERVE_SHA
