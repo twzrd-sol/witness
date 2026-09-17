@@ -6,10 +6,9 @@ Authoritative loopback host for `https://witness.outbid.sh` (systemd user unit
 | Field | Value |
 |---|---|
 | Worktree | `/home/twzrd/witness-serve` |
-| Git SHA | `180cc37ff62c54cbbe90237009bc21c3c6c5396b` |
-| Branch tip | `origin/master` (detached checkout) |
+| Checkout SHA | `621629e6668dbe21960e525032b0bfee6d75376e` (`origin/master`; `SERVE_SHA` must match) |
+| Code upgrade SHA | `180cc37ff62c54cbbe90237009bc21c3c6c5396b` (runtime bump from `2054818`, 2026-09-17) |
 | Previous pin | `2054818` (`feat(witness): explicit browse retrieve…` #52) |
-| Upgraded (UTC) | 2026-09-17 |
 | Env file | `/home/twzrd/witness-serve/.env` (not in git) |
 
 ## Upgrade verification (2026-09-17)
@@ -36,4 +35,5 @@ echo "$(git -C /home/twzrd/witness-serve rev-parse HEAD)" > /home/twzrd/witness-
 systemctl --user restart witness.service
 ```
 
-Update this doc and commit when the pin changes.
+`SERVE_SHA` is the full `git rev-parse HEAD` of this worktree after each refresh.
+Update this doc when the pin changes.
