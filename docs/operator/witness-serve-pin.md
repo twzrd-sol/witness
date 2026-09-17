@@ -6,7 +6,7 @@ Authoritative loopback host for `https://witness.outbid.sh` (systemd user unit
 | Field | Value |
 |---|---|
 | Worktree | `/home/twzrd/witness-serve` |
-| Checkout SHA | `621629e6668dbe21960e525032b0bfee6d75376e` (`origin/master`; `SERVE_SHA` must match) |
+| Checkout SHA | `f0ac90723803b4544290dc75477b0d46c16cbfe8` (`origin/master`; `SERVE_SHA` must match `git rev-parse HEAD`) |
 | Code upgrade SHA | `180cc37ff62c54cbbe90237009bc21c3c6c5396b` (runtime bump from `2054818`, 2026-09-17) |
 | Previous pin | `2054818` (`feat(witness): explicit browse retrieve…` #52) |
 | Env file | `/home/twzrd/witness-serve/.env` (not in git) |
@@ -32,6 +32,7 @@ git -C /home/twzrd/witness-serve fetch origin
 git -C /home/twzrd/witness-serve checkout --detach origin/master
 cd /home/twzrd/witness-serve && npm ci && npm test
 echo "$(git -C /home/twzrd/witness-serve rev-parse HEAD)" > /home/twzrd/witness-serve/SERVE_SHA
+# If you merged pin docs on GitHub, re-run the echo line so SERVE_SHA matches the new master tip.
 systemctl --user restart witness.service
 ```
 
