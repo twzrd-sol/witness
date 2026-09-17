@@ -1,7 +1,8 @@
 # Live scrape / browse / intel PAY — 2026-09-12
 
-Operator-approved spend against the deployed host (`2054818`, then still
-serving that tree). This is **not** the issue #1 independent twice-pay
+Operator-approved spend against the deployed host at commit **`2054818`**
+(historical; current serve pin is in [`../witness-serve-pin.md`](../witness-serve-pin.md)).
+This is **not** the issue #1 independent twice-pay
 bundle: one `/witness` receipt, operator wallet, sponsored reader hops.
 
 Re-check the signed scrape receipt offline:
